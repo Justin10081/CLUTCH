@@ -15,7 +15,6 @@ export default function ClutchMode() {
   const [currentPhase, setCurrentPhase] = useState(0)
   const [loadingDot, setLoadingDot] = useState(0)
   const timerRef = useRef(null)
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem('clutch-ai-key') || '')
 
   useEffect(() => {
     if (timerRunning && secondsLeft > 0) {
@@ -56,11 +55,6 @@ export default function ClutchMode() {
   const timerPercent = ((STUDY_PLAN_DURATION * 60 - secondsLeft) / (STUDY_PLAN_DURATION * 60)) * 100
   const circumference = 2 * Math.PI * 54
 
-  const saveKey = (val) => {
-    setApiKey(val)
-    localStorage.setItem('clutch-ai-key', val)
-  }
-
   const generateSurvivalGuide = async () => {
     if (!topic.trim()) return
     setError('')
@@ -68,31 +62,26 @@ export default function ClutchMode() {
     const count = parseInt(localStorage.getItem('clutch-session-count') || '0')
     localStorage.setItem('clutch-session-count', (count + 1).toString())
 
-    if (!apiKey) {
-      await new Promise(r => setTimeout(r, 2000))
-      setResult(generateTemplateGuide(topic, courseLevel, examType, focusAreas))
-      setStep('result')
-      return
+    try {
+      const res = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topic, courseLevel, examType, focusAreas }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setResult(data)
+        setStep('result')
+        return
+      }
+    } catch (_) {
+      // Network error — fall through to template
     }
 
-    try {
-      const prompt = buildPrompt(topic, courseLevel, examType, focusAreas)
-      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-        body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], temperature: 0.3, max_tokens: 4000 }),
-      })
-      if (!response.ok) throw new Error(`API error: ${response.status}`)
-      const data = await response.json()
-      const content = data.choices?.[0]?.message?.content
-      if (!content) throw new Error('No response from AI')
-      setResult(parseAIResponse(content, topic))
-      setStep('result')
-    } catch (err) {
-      setError(`AI failed: ${err.message}. Using template instead.`)
-      setResult(generateTemplateGuide(topic, courseLevel, examType, focusAreas))
-      setStep('result')
-    }
+    // Fallback: structured template guide
+    await new Promise(r => setTimeout(r, 1200))
+    setResult(generateTemplateGuide(topic, courseLevel, examType, focusAreas))
+    setStep('result')
   }
 
   const startStudying = () => { setStep('studying'); setSecondsLeft(STUDY_PLAN_DURATION * 60); setTimerRunning(true); setCurrentPhase(0) }
@@ -149,22 +138,6 @@ export default function ClutchMode() {
       {/* Input step */}
       {step === 'input' && (
         <div className="space-y-4 animate-fade-up">
-          {/* AI Key */}
-          <div className="card p-4">
-            <div className="flex items-center justify-between mb-2">
-              <div>
-                <h3 className="text-xs font-bold uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>Groq API Key</h3>
-                <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>Free from console.groq.com — enables real AI responses</p>
-              </div>
-              <span className="badge" style={{ backgroundColor: apiKey ? 'rgba(34,197,94,0.15)' : 'var(--bg-input)', color: apiKey ? 'var(--color-success-400)' : 'var(--text-muted)' }}>
-                {apiKey ? '● Connected' : '○ Templates'}
-              </span>
-            </div>
-            <input type="password" value={apiKey} onChange={e => saveKey(e.target.value)}
-              className="input w-full px-3 py-2.5 text-xs"
-              placeholder="gsk_..." />
-          </div>
-
           {/* Topic */}
           <div className="card p-4">
             <label className="block text-xs font-bold uppercase tracking-wide mb-2" style={{ color: 'var(--text-muted)' }}>
@@ -412,17 +385,6 @@ function Section({ title, subtitle, icon, children }) {
   )
 }
 
-function buildPrompt(topic, level, examType, focusAreas) {
-  return `You are an expert tutor. A student has an exam TOMORROW and needs an emergency study guide.\n\nTopic: ${topic}\nLevel: ${level}\nExam format: ${examType}\n${focusAreas ? `Areas they're struggling with: ${focusAreas}` : ''}\n\nGenerate a comprehensive but concise survival guide in this EXACT JSON format (no markdown, just JSON):\n{\n  "keyConcepts": [\n    { "term": "Concept Name", "definition": "Clear, concise definition", "example": "Quick example if applicable" }\n  ],\n  "formulas": [\n    { "formula": "The formula or key fact", "explanation": "What it means and when to use it" }\n  ],\n  "likelyQuestions": [\n    { "question": "A question likely to appear on the exam", "answer": "Concise but complete answer" }\n  ],\n  "commonMistakes": ["Mistake 1", "Mistake 2"],\n  "studyPlan": [\n    { "title": "Phase name", "minutes": 15, "description": "What to do in this phase" }\n  ]\n}\n\nRequirements:\n- Include 6-10 key concepts\n- Include 3-5 formulas or key facts\n- Include 5-8 likely exam questions with answers\n- Include 3-5 common mistakes\n- Create a 4-phase study plan totaling 60 minutes\n- Focus on HIGH PROBABILITY exam content\n- Keep everything concise\n- For ${examType} format, tailor the questions accordingly\n- Return ONLY valid JSON, no other text`
-}
-
-function parseAIResponse(content, topic) {
-  try {
-    const jsonMatch = content.match(/\{[\s\S]*\}/)
-    if (jsonMatch) return JSON.parse(jsonMatch[0])
-  } catch (e) { console.error('Failed to parse AI response:', e) }
-  return generateTemplateGuide(topic, 'undergraduate', 'mixed', '')
-}
 
 function generateTemplateGuide(topic) {
   return {
