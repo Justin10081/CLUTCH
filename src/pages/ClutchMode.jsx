@@ -13,8 +13,9 @@ export default function ClutchMode() {
   const [timerRunning, setTimerRunning] = useState(false)
   const [secondsLeft, setSecondsLeft] = useState(STUDY_PLAN_DURATION * 60)
   const [currentPhase, setCurrentPhase] = useState(0)
+  const [loadingDot, setLoadingDot] = useState(0)
   const timerRef = useRef(null)
-  const apiKey = localStorage.getItem('clutch-ai-key') || ''
+  const [apiKey, setApiKey] = useState(() => localStorage.getItem('clutch-ai-key') || '')
 
   useEffect(() => {
     if (timerRunning && secondsLeft > 0) {
@@ -40,10 +41,24 @@ export default function ClutchMode() {
     setCurrentPhase(phases.length - 1)
   }, [secondsLeft, result])
 
+  useEffect(() => {
+    if (step !== 'loading') return
+    const interval = setInterval(() => setLoadingDot(d => (d + 1) % 3), 500)
+    return () => clearInterval(interval)
+  }, [step])
+
   const formatTime = (secs) => {
     const m = Math.floor(secs / 60)
     const s = secs % 60
     return `${m}:${s.toString().padStart(2, '0')}`
+  }
+
+  const timerPercent = ((STUDY_PLAN_DURATION * 60 - secondsLeft) / (STUDY_PLAN_DURATION * 60)) * 100
+  const circumference = 2 * Math.PI * 54
+
+  const saveKey = (val) => {
+    setApiKey(val)
+    localStorage.setItem('clutch-ai-key', val)
   }
 
   const generateSurvivalGuide = async () => {
@@ -54,7 +69,7 @@ export default function ClutchMode() {
     localStorage.setItem('clutch-session-count', (count + 1).toString())
 
     if (!apiKey) {
-      await new Promise(r => setTimeout(r, 1500))
+      await new Promise(r => setTimeout(r, 2000))
       setResult(generateTemplateGuide(topic, courseLevel, examType, focusAreas))
       setStep('result')
       return
@@ -74,159 +89,306 @@ export default function ClutchMode() {
       setResult(parseAIResponse(content, topic))
       setStep('result')
     } catch (err) {
-      setError(`AI generation failed: ${err.message}. Falling back to template.`)
+      setError(`AI failed: ${err.message}. Using template instead.`)
       setResult(generateTemplateGuide(topic, courseLevel, examType, focusAreas))
       setStep('result')
     }
   }
 
   const startStudying = () => { setStep('studying'); setSecondsLeft(STUDY_PLAN_DURATION * 60); setTimerRunning(true); setCurrentPhase(0) }
-  const resetAll = () => { setStep('input'); setResult(null); setTimerRunning(false); clearInterval(timerRef.current); setSecondsLeft(STUDY_PLAN_DURATION * 60) }
+  const resetAll = () => { setStep('input'); setResult(null); setTimerRunning(false); clearInterval(timerRef.current); setSecondsLeft(STUDY_PLAN_DURATION * 60); setTopic(''); setFocusAreas('') }
 
   return (
-    <div className="space-y-6 pb-20 sm:pb-6">
+    <div className="space-y-5 pb-24 sm:pb-8 animate-fade-up">
+      {/* Header */}
       <div>
-        <div className="flex items-center gap-2">
-          <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Clutch Mode</h1>
-          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-accent-500/10 text-accent-400">AI</span>
+        <div className="flex items-center gap-2 mb-1">
+          <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #7c3aed, #6d28d9)' }}>
+            <svg className="w-4.5 h-4.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+          </div>
+          <h1 className="text-2xl font-extrabold tracking-tight" style={{ color: 'var(--text-primary)' }}>Clutch Mode</h1>
+          <span className="badge" style={{ backgroundColor: 'var(--glow-color-soft)', color: 'var(--color-accent-400)' }}>AI</span>
         </div>
-        <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
+        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
           {step === 'input' && "Exam tomorrow? Tell us what you need to study."}
-          {step === 'loading' && "Generating your survival guide..."}
-          {step === 'result' && "Your survival guide is ready. Start the 60-minute timer when you're ready."}
+          {step === 'loading' && "Building your survival guide..."}
+          {step === 'result' && `Your ${topic} survival guide is ready.`}
           {step === 'studying' && "You're in the zone. Follow the plan below."}
         </p>
       </div>
 
-      {step === 'input' && (
-        <div className="rounded-xl p-4 border" style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border-color)' }}>
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>AI Setup (optional)</h3>
-            <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ backgroundColor: apiKey ? 'var(--color-success-500)/20' : 'var(--bg-input)', color: apiKey ? 'var(--color-success-400)' : 'var(--text-muted)' }}>
-              {apiKey ? 'Connected' : 'Using templates'}
-            </span>
-          </div>
-          <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>Add a free Groq API key for AI-powered guides. Without it, you'll get structured templates.</p>
-          <input type="password" value={apiKey} onChange={e => localStorage.setItem('clutch-ai-key', e.target.value)} onInput={e => localStorage.setItem('clutch-ai-key', e.target.value)} className="w-full px-3 py-2 rounded-lg text-xs border outline-none focus:border-accent-500" style={{ backgroundColor: 'var(--bg-input)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} placeholder="gsk_... (free from console.groq.com)" />
-        </div>
-      )}
-
-      {step === 'input' && (
-        <div className="space-y-4">
-          <div className="rounded-xl p-4 border" style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border-color)' }}>
-            <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-muted)' }}>What's the exam on?</label>
-            <input type="text" value={topic} onChange={e => setTopic(e.target.value)} className="w-full px-3 py-3 rounded-lg text-sm border outline-none focus:border-accent-500" style={{ backgroundColor: 'var(--bg-input)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} placeholder="e.g., Microeconomics — Supply & Demand, Elasticity, Market Structures" />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-xl p-4 border" style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border-color)' }}>
-              <label className="block text-xs font-medium mb-2" style={{ color: 'var(--text-muted)' }}>Level</label>
-              <div className="space-y-2">
-                {['highschool', 'undergraduate', 'graduate'].map(level => (
-                  <button key={level} onClick={() => setCourseLevel(level)} className="w-full px-3 py-2 rounded-lg text-xs font-medium text-left transition" style={{ backgroundColor: courseLevel === level ? 'var(--color-accent-500)' : 'var(--bg-input)', color: courseLevel === level ? 'white' : 'var(--text-secondary)' }}>
-                    {level === 'highschool' ? 'High School' : level.charAt(0).toUpperCase() + level.slice(1)}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="rounded-xl p-4 border" style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border-color)' }}>
-              <label className="block text-xs font-medium mb-2" style={{ color: 'var(--text-muted)' }}>Exam type</label>
-              <div className="space-y-2">
-                {['multiple-choice', 'short-answer', 'essay', 'mixed'].map(type => (
-                  <button key={type} onClick={() => setExamType(type)} className="w-full px-3 py-2 rounded-lg text-xs font-medium text-left transition" style={{ backgroundColor: examType === type ? 'var(--color-accent-500)' : 'var(--bg-input)', color: examType === type ? 'white' : 'var(--text-secondary)' }}>
-                    {type.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-          <div className="rounded-xl p-4 border" style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border-color)' }}>
-            <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-muted)' }}>Specific areas you're struggling with (optional)</label>
-            <textarea value={focusAreas} onChange={e => setFocusAreas(e.target.value)} rows={2} className="w-full px-3 py-2.5 rounded-lg text-sm border outline-none focus:border-accent-500 resize-none" style={{ backgroundColor: 'var(--bg-input)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }} placeholder="e.g., I don't understand price elasticity calculations" />
-          </div>
-          <button onClick={generateSurvivalGuide} disabled={!topic.trim()} className="w-full py-3.5 bg-accent-500 text-white font-bold rounded-xl hover:bg-accent-600 transition disabled:opacity-40 text-base">Generate Survival Guide</button>
-        </div>
-      )}
-
-      {step === 'loading' && (
-        <div className="text-center py-16">
-          <div className="w-12 h-12 border-3 border-accent-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="font-semibold" style={{ color: 'var(--text-primary)' }}>Building your survival guide...</p>
-          <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>Identifying high-probability exam content</p>
-        </div>
-      )}
-
-      {(step === 'result' || step === 'studying') && result && (
-        <div className="space-y-4">
-          {error && <div className="text-xs px-3 py-2 rounded-lg bg-warning-500/10 text-warning-400">{error}</div>}
-          {step === 'studying' && (
-            <div className="rounded-xl p-6 border-2 text-center" style={{ borderColor: 'var(--color-accent-500)', backgroundColor: 'var(--bg-card)' }}>
-              <div className="text-5xl font-black font-mono" style={{ color: secondsLeft <= 300 ? 'var(--color-danger-400)' : 'var(--color-accent-400)' }}>{formatTime(secondsLeft)}</div>
-              <div className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>{secondsLeft === 0 ? "Time's up! You did it." : `Phase ${currentPhase + 1} of ${result.studyPlan?.length || 4}`}</div>
-              <div className="flex justify-center gap-3 mt-4">
-                <button onClick={() => setTimerRunning(!timerRunning)} className="px-4 py-2 rounded-lg text-sm font-medium" style={{ backgroundColor: 'var(--bg-input)', color: 'var(--text-primary)' }}>{timerRunning ? 'Pause' : 'Resume'}</button>
-                <button onClick={resetAll} className="px-4 py-2 rounded-lg text-sm font-medium" style={{ color: 'var(--color-danger-400)' }}>End session</button>
-              </div>
-            </div>
-          )}
-          <Section title="Key Concepts (Know These Cold)">
-            {result.keyConcepts?.map((concept, i) => (
-              <div key={i} className="p-3 rounded-lg mb-2" style={{ backgroundColor: 'var(--bg-input)' }}>
-                <div className="font-semibold text-sm" style={{ color: 'var(--text-primary)' }}>{concept.term}</div>
-                <div className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>{concept.definition}</div>
-                {concept.example && <div className="text-xs mt-1 italic" style={{ color: 'var(--text-muted)' }}>Example: {concept.example}</div>}
-              </div>
-            ))}
-          </Section>
-          {result.formulas?.length > 0 && (
-            <Section title="Formulas & Key Facts">
-              {result.formulas.map((f, i) => (
-                <div key={i} className="p-3 rounded-lg mb-2 font-mono text-sm" style={{ backgroundColor: 'var(--bg-input)', color: 'var(--color-accent-400)' }}>
-                  <div>{f.formula}</div>
-                  <div className="font-sans text-xs mt-1" style={{ color: 'var(--text-muted)' }}>{f.explanation}</div>
+      {/* Step indicator */}
+      {step !== 'input' && (
+        <div className="flex items-center gap-2">
+          {['input', 'result', 'studying'].map((s, i) => {
+            const steps = ['input', 'result', 'studying']
+            const currentIdx = steps.indexOf(step === 'loading' ? 'input' : step)
+            const isComplete = i < currentIdx
+            const isActive = i === currentIdx || (s === 'input' && step === 'loading')
+            return (
+              <div key={s} className="flex items-center gap-2">
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold transition-all duration-300`}
+                  style={{
+                    backgroundColor: isComplete ? 'var(--color-success-500)' : isActive ? '#7c3aed' : 'var(--bg-input)',
+                    color: isComplete || isActive ? 'white' : 'var(--text-muted)'
+                  }}>
+                  {isComplete ? '✓' : i + 1}
                 </div>
-              ))}
-            </Section>
+                <span className="text-xs font-medium" style={{ color: isActive ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                  {['Setup', 'Guide', 'Study'][i]}
+                </span>
+                {i < 2 && <div className="w-6 h-px" style={{ backgroundColor: 'var(--border-color)' }} />}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Input step */}
+      {step === 'input' && (
+        <div className="space-y-4 animate-fade-up">
+          {/* AI Key */}
+          <div className="card p-4">
+            <div className="flex items-center justify-between mb-2">
+              <div>
+                <h3 className="text-xs font-bold uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>Groq API Key</h3>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>Free from console.groq.com — enables real AI responses</p>
+              </div>
+              <span className="badge" style={{ backgroundColor: apiKey ? 'rgba(34,197,94,0.15)' : 'var(--bg-input)', color: apiKey ? 'var(--color-success-400)' : 'var(--text-muted)' }}>
+                {apiKey ? '● Connected' : '○ Templates'}
+              </span>
+            </div>
+            <input type="password" value={apiKey} onChange={e => saveKey(e.target.value)}
+              className="input w-full px-3 py-2.5 text-xs"
+              placeholder="gsk_..." />
+          </div>
+
+          {/* Topic */}
+          <div className="card p-4">
+            <label className="block text-xs font-bold uppercase tracking-wide mb-2" style={{ color: 'var(--text-muted)' }}>
+              What's your exam on? *
+            </label>
+            <input type="text" value={topic} onChange={e => setTopic(e.target.value)}
+              className="input w-full px-4 py-3 text-sm"
+              placeholder="e.g., Microeconomics — Supply & Demand, Elasticity, Market Structures"
+              onKeyDown={e => e.key === 'Enter' && topic.trim() && generateSurvivalGuide()} />
+          </div>
+
+          {/* Level + Exam type */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="card p-4">
+              <label className="block text-xs font-bold uppercase tracking-wide mb-3" style={{ color: 'var(--text-muted)' }}>Level</label>
+              <div className="space-y-2">
+                {[['highschool', 'High School'], ['undergraduate', 'Undergrad'], ['graduate', 'Graduate']].map(([val, label]) => (
+                  <button key={val} onClick={() => setCourseLevel(val)}
+                    className="w-full px-3 py-2 rounded-xl text-xs font-semibold text-left transition-all duration-200"
+                    style={{ background: courseLevel === val ? 'linear-gradient(135deg, #7c3aed, #6d28d9)' : 'var(--bg-input)', color: courseLevel === val ? 'white' : 'var(--text-secondary)' }}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="card p-4">
+              <label className="block text-xs font-bold uppercase tracking-wide mb-3" style={{ color: 'var(--text-muted)' }}>Exam Type</label>
+              <div className="space-y-2">
+                {[['multiple-choice', 'Multiple Choice'], ['short-answer', 'Short Answer'], ['essay', 'Essay'], ['mixed', 'Mixed']].map(([val, label]) => (
+                  <button key={val} onClick={() => setExamType(val)}
+                    className="w-full px-3 py-2 rounded-xl text-xs font-semibold text-left transition-all duration-200"
+                    style={{ background: examType === val ? 'linear-gradient(135deg, #7c3aed, #6d28d9)' : 'var(--bg-input)', color: examType === val ? 'white' : 'var(--text-secondary)' }}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Struggling with */}
+          <div className="card p-4">
+            <label className="block text-xs font-bold uppercase tracking-wide mb-2" style={{ color: 'var(--text-muted)' }}>
+              What are you struggling with? <span className="font-normal normal-case opacity-60">(optional)</span>
+            </label>
+            <textarea value={focusAreas} onChange={e => setFocusAreas(e.target.value)} rows={2}
+              className="input w-full px-4 py-3 text-sm resize-none"
+              placeholder="e.g., I can't wrap my head around price elasticity calculations..." />
+          </div>
+
+          <button onClick={generateSurvivalGuide} disabled={!topic.trim()} className="btn-glow w-full py-4 text-base">
+            Generate Survival Guide ⚡
+          </button>
+        </div>
+      )}
+
+      {/* Loading */}
+      {step === 'loading' && (
+        <div className="flex flex-col items-center justify-center py-20 animate-fade-in">
+          <div className="relative w-20 h-20 mb-6">
+            <div className="absolute inset-0 rounded-full border-4 border-accent-500/20" />
+            <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-accent-500 animate-spin" />
+            <div className="absolute inset-3 rounded-full flex items-center justify-center" style={{ backgroundColor: 'var(--glow-color-soft)' }}>
+              <svg className="w-7 h-7" style={{ color: 'var(--color-accent-400)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m1.636-6.364l.707.707M6 20l.707-.707M17.657 6.343l.707-.707M18 20l-.707-.707M12 21v-1m0-16a8 8 0 100 16 8 8 0 000-16z" />
+              </svg>
+            </div>
+          </div>
+          <p className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
+            Building your survival guide{'.'.repeat(loadingDot + 1)}
+          </p>
+          <p className="text-sm mt-2" style={{ color: 'var(--text-muted)' }}>Identifying high-probability exam content</p>
+        </div>
+      )}
+
+      {/* Result / Studying */}
+      {(step === 'result' || step === 'studying') && result && (
+        <div className="space-y-4 animate-fade-up">
+          {error && (
+            <div className="text-xs px-4 py-3 rounded-xl" style={{ backgroundColor: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', color: 'var(--color-warning-400)' }}>
+              ⚠ {error}
+            </div>
           )}
-          <Section title="High Probability Exam Questions">
-            {result.likelyQuestions?.map((q, i) => (
-              <div key={i} className="p-3 rounded-lg mb-2" style={{ backgroundColor: 'var(--bg-input)' }}>
-                <div className="flex items-start gap-2">
-                  <span className="text-xs font-bold px-1.5 py-0.5 rounded shrink-0" style={{ backgroundColor: 'var(--color-warning-500)', color: 'black' }}>Q{i + 1}</span>
-                  <div>
-                    <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{q.question}</div>
-                    <details className="mt-1">
-                      <summary className="text-xs cursor-pointer" style={{ color: 'var(--color-accent-400)' }}>Show answer</summary>
-                      <div className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>{q.answer}</div>
-                    </details>
+
+          {/* Timer (studying mode) */}
+          {step === 'studying' && (
+            <div className="card p-6 text-center">
+              <div className="relative w-36 h-36 mx-auto mb-4">
+                <svg className="w-36 h-36 -rotate-90" viewBox="0 0 120 120">
+                  <circle cx="60" cy="60" r="54" fill="none" stroke="var(--bg-input)" strokeWidth="8" />
+                  <circle cx="60" cy="60" r="54" fill="none"
+                    stroke={secondsLeft <= 300 ? 'var(--color-danger-400)' : '#7c3aed'}
+                    strokeWidth="8"
+                    strokeLinecap="round"
+                    strokeDasharray={circumference}
+                    strokeDashoffset={circumference - (timerPercent / 100) * circumference}
+                    style={{ transition: 'stroke-dashoffset 1s linear, stroke 0.5s ease' }} />
+                </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                  <div className="text-3xl font-black font-mono" style={{ color: secondsLeft <= 300 ? 'var(--color-danger-400)' : 'var(--color-accent-400)' }}>
+                    {formatTime(secondsLeft)}
+                  </div>
+                  <div className="text-[10px] font-semibold uppercase tracking-wide mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                    {secondsLeft === 0 ? 'Done!' : `Phase ${currentPhase + 1}/${result.studyPlan?.length || 4}`}
                   </div>
                 </div>
               </div>
-            ))}
-          </Section>
-          {result.commonMistakes?.length > 0 && (
-            <Section title="Common Mistakes (Don't Do These)">
-              {result.commonMistakes.map((m, i) => (
-                <div key={i} className="p-3 rounded-lg mb-2 border-l-3" style={{ backgroundColor: 'var(--bg-input)', borderLeftColor: 'var(--color-danger-400)' }}>
-                  <div className="text-sm" style={{ color: 'var(--text-primary)' }}>{m}</div>
+              {result.studyPlan?.[currentPhase] && (
+                <p className="text-sm font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>
+                  Now: {result.studyPlan[currentPhase].title}
+                </p>
+              )}
+              <div className="flex justify-center gap-3">
+                <button onClick={() => setTimerRunning(!timerRunning)}
+                  className="btn-ghost px-5 py-2.5 text-sm">
+                  {timerRunning ? '⏸ Pause' : '▶ Resume'}
+                </button>
+                <button onClick={resetAll}
+                  className="px-5 py-2.5 rounded-xl text-sm font-medium transition"
+                  style={{ color: 'var(--color-danger-400)', backgroundColor: 'rgba(239,68,68,0.08)' }}>
+                  End Session
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Key Concepts */}
+          <Section title="Key Concepts" subtitle="Know these cold" icon="🧠">
+            <div className="space-y-2">
+              {result.keyConcepts?.map((concept, i) => (
+                <div key={i} className="p-3.5 rounded-xl" style={{ backgroundColor: 'var(--bg-input)' }}>
+                  <div className="font-semibold text-sm" style={{ color: 'var(--text-primary)' }}>{concept.term}</div>
+                  <div className="text-xs mt-1 leading-relaxed" style={{ color: 'var(--text-secondary)' }}>{concept.definition}</div>
+                  {concept.example && <div className="text-xs mt-1.5 italic px-2.5 py-1.5 rounded-lg" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-muted)' }}>💡 {concept.example}</div>}
                 </div>
               ))}
+            </div>
+          </Section>
+
+          {/* Formulas */}
+          {result.formulas?.length > 0 && (
+            <Section title="Formulas & Key Facts" subtitle="Memorize these" icon="📐">
+              <div className="space-y-2">
+                {result.formulas.map((f, i) => (
+                  <div key={i} className="p-3.5 rounded-xl" style={{ backgroundColor: 'var(--bg-input)' }}>
+                    <div className="font-mono text-sm font-semibold" style={{ color: 'var(--color-accent-400)' }}>{f.formula}</div>
+                    <div className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>{f.explanation}</div>
+                  </div>
+                ))}
+              </div>
             </Section>
           )}
-          <Section title="60-Minute Study Plan">
-            {result.studyPlan?.map((phase, i) => (
-              <div key={i} className="p-3 rounded-lg mb-2 border-l-3 transition" style={{ backgroundColor: step === 'studying' && i === currentPhase ? 'var(--color-accent-500)/10' : 'var(--bg-input)', borderLeftColor: step === 'studying' && i === currentPhase ? 'var(--color-accent-500)' : 'var(--border-color)' }}>
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold text-sm" style={{ color: 'var(--text-primary)' }}>{phase.title}</span>
-                  <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-muted)' }}>{phase.minutes} min</span>
-                </div>
-                <div className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>{phase.description}</div>
-              </div>
-            ))}
+
+          {/* Exam Questions */}
+          <Section title="High Probability Questions" subtitle="Practice these before you sleep" icon="🎯">
+            <div className="space-y-2">
+              {result.likelyQuestions?.map((q, i) => (
+                <details key={i} className="rounded-xl overflow-hidden group">
+                  <summary className="p-3.5 cursor-pointer flex items-center gap-3 list-none" style={{ backgroundColor: 'var(--bg-input)' }}>
+                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-lg shrink-0" style={{ backgroundColor: 'rgba(245,158,11,0.2)', color: 'var(--color-warning-400)' }}>
+                      Q{i + 1}
+                    </span>
+                    <span className="text-sm font-medium flex-1" style={{ color: 'var(--text-primary)' }}>{q.question}</span>
+                    <svg className="w-4 h-4 shrink-0 transition-transform duration-200 group-open:rotate-180" style={{ color: 'var(--text-muted)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </summary>
+                  <div className="px-4 pb-3.5 pt-2 text-sm leading-relaxed" style={{ backgroundColor: 'var(--bg-input)', color: 'var(--text-secondary)', borderTop: '1px solid var(--border-color)' }}>
+                    {q.answer}
+                  </div>
+                </details>
+              ))}
+            </div>
           </Section>
+
+          {/* Common Mistakes */}
+          {result.commonMistakes?.length > 0 && (
+            <Section title="Common Mistakes" subtitle="Don't do these" icon="⚠️">
+              <div className="space-y-2">
+                {result.commonMistakes.map((m, i) => (
+                  <div key={i} className="flex items-start gap-3 p-3.5 rounded-xl" style={{ backgroundColor: 'var(--bg-input)', borderLeft: '3px solid var(--color-danger-400)' }}>
+                    <span className="text-xs font-bold shrink-0 mt-0.5" style={{ color: 'var(--color-danger-400)' }}>✕</span>
+                    <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{m}</span>
+                  </div>
+                ))}
+              </div>
+            </Section>
+          )}
+
+          {/* Study Plan */}
+          <Section title="60-Minute Study Plan" subtitle="Follow in order" icon="⏱">
+            <div className="space-y-2">
+              {result.studyPlan?.map((phase, i) => {
+                const isActive = step === 'studying' && i === currentPhase
+                return (
+                  <div key={i} className="p-3.5 rounded-xl transition-all duration-300"
+                    style={{
+                      backgroundColor: isActive ? 'rgba(124,58,237,0.12)' : 'var(--bg-input)',
+                      borderLeft: `3px solid ${isActive ? '#7c3aed' : 'transparent'}`,
+                      boxShadow: isActive ? '0 0 15px rgba(124,58,237,0.1)' : 'none'
+                    }}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-semibold text-sm" style={{ color: isActive ? 'var(--color-accent-400)' : 'var(--text-primary)' }}>
+                        {isActive && <span className="animate-pulse mr-1">▶</span>}{phase.title}
+                      </span>
+                      <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-muted)' }}>
+                        {phase.minutes} min
+                      </span>
+                    </div>
+                    <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>{phase.description}</p>
+                  </div>
+                )
+              })}
+            </div>
+          </Section>
+
+          {/* Action buttons */}
           {step === 'result' && (
             <div className="flex gap-3">
-              <button onClick={startStudying} className="flex-1 py-3 bg-accent-500 text-white font-bold rounded-xl hover:bg-accent-600 transition">Start 60-Minute Timer</button>
-              <button onClick={resetAll} className="px-4 py-3 rounded-xl border font-medium text-sm" style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}>New topic</button>
+              <button onClick={startStudying} className="btn-glow flex-1 py-3.5 text-sm">
+                ▶ Start 60-Min Timer
+              </button>
+              <button onClick={resetAll} className="btn-ghost px-5 py-3.5 text-sm">
+                New Topic
+              </button>
             </div>
           )}
         </div>
@@ -235,10 +397,16 @@ export default function ClutchMode() {
   )
 }
 
-function Section({ title, children }) {
+function Section({ title, subtitle, icon, children }) {
   return (
-    <div className="rounded-xl p-4 border" style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border-color)' }}>
-      <h3 className="text-sm font-bold mb-3" style={{ color: 'var(--text-primary)' }}>{title}</h3>
+    <div className="card p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <span>{icon}</span>
+        <div>
+          <h3 className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{title}</h3>
+          {subtitle && <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{subtitle}</p>}
+        </div>
+      </div>
       {children}
     </div>
   )
@@ -263,32 +431,32 @@ function generateTemplateGuide(topic) {
       { term: 'Key Vocabulary', definition: 'Make a list of all technical terms from your notes. If you can define them from memory, you know them.', example: 'Use flashcards or cover the definitions and test yourself.' },
       { term: 'Relationships & Connections', definition: 'Understand how different concepts relate to each other. Exams love testing whether you see the big picture.', example: 'Draw a concept map connecting the main topics.' },
       { term: 'Real-World Applications', definition: 'Be ready to apply concepts to scenarios or case studies. Professors often test application, not just memorization.', example: 'Think of one real example for each major concept.' },
-      { term: 'Lectures vs. Textbook', definition: 'If your professor emphasized something in lecture that differs from the textbook, go with what they said. Exams follow the professor.', example: 'Review lecture slides first, textbook second.' },
+      { term: 'Lecture Priority', definition: 'If your professor emphasized something in lecture that differs from the textbook, go with what they said.', example: 'Review lecture slides first, textbook second.' },
     ],
     formulas: [
-      { formula: 'Review all formulas from your formula sheet or notes', explanation: "Write each formula down 3 times from memory. If you can't, that's what you need to study." },
-      { formula: 'Know the UNITS for every formula', explanation: 'Exams often test whether you know what units to use. This is easy marks.' },
-      { formula: 'Practice plugging in numbers', explanation: "Don't just memorize — do 2-3 practice calculations for each formula." },
+      { formula: 'Review all formulas from your notes', explanation: "Write each formula down 3 times from memory. If you can't, that's what you need to study." },
+      { formula: 'Know the UNITS for every formula', explanation: 'Exams often test units. Easy marks if you know them.' },
+      { formula: 'Practice plugging in numbers', explanation: "Don't just memorize — do 2-3 practice calculations per formula." },
     ],
     likelyQuestions: [
-      { question: `Define the key terms and concepts of ${topic}`, answer: 'Use precise definitions from your notes. Include examples where possible to show understanding.' },
-      { question: `Compare and contrast the main theories/approaches in ${topic}`, answer: 'Make a comparison table with similarities and differences. This is a common exam format.' },
-      { question: 'Apply your knowledge to a real-world scenario', answer: 'Practice taking a concept and explaining how it works in a practical situation.' },
-      { question: 'What are the limitations or criticisms?', answer: 'Professors love asking about weaknesses of theories. Know at least 2 criticisms for major concepts.' },
-      { question: `How does ${topic} connect to other topics in this course?`, answer: 'Show that you understand the big picture, not just isolated facts.' },
+      { question: `Define the key terms and concepts of ${topic}`, answer: 'Use precise definitions from your notes. Include examples to show understanding.' },
+      { question: `Compare and contrast the main theories in ${topic}`, answer: 'Make a comparison table with similarities and differences.' },
+      { question: 'Apply your knowledge to a real-world scenario', answer: 'Practice explaining how a concept works in a practical situation.' },
+      { question: 'What are the limitations or criticisms?', answer: 'Know at least 2 criticisms for major concepts.' },
+      { question: `How does ${topic} connect to other course topics?`, answer: 'Show you understand the big picture, not just isolated facts.' },
     ],
     commonMistakes: [
       'Not reading the full question — students lose marks by answering what they THINK was asked',
       'Writing too much for short-answer questions — be concise and direct',
       "Skipping questions you're unsure about — write something, partial marks exist",
-      'Not managing time — check how many marks each question is worth and allocate time accordingly',
+      'Not managing time — allocate time by mark value',
       'Forgetting to show your work on calculation questions',
     ],
     studyPlan: [
-      { title: 'Quick Review', minutes: 15, description: `Read through all your notes on ${topic}. Don't memorize yet — just refresh your memory on what exists. Star anything you don't recognize.` },
-      { title: 'Active Recall', minutes: 20, description: 'Close your notes. Write down everything you can remember. Then open your notes and fill in the gaps. Focus on what you FORGOT.' },
-      { title: 'Practice Questions', minutes: 15, description: 'Do practice problems or answer the likely exam questions above WITHOUT looking at answers first. Check after.' },
-      { title: 'Final Cram', minutes: 10, description: "Review only the things you got wrong or forgot. Read through formulas one more time. You're ready." },
+      { title: 'Quick Review', minutes: 15, description: `Read through all notes on ${topic}. Don't memorize — refresh your memory. Star anything you don't recognize.` },
+      { title: 'Active Recall', minutes: 20, description: 'Close your notes. Write down everything you remember. Then open and fill in the gaps. Focus on what you FORGOT.' },
+      { title: 'Practice Questions', minutes: 15, description: 'Answer the exam questions above WITHOUT looking at answers first. Check after.' },
+      { title: 'Final Cram', minutes: 10, description: "Review only things you got wrong. Read formulas one more time. You're ready." },
     ],
   }
 }
