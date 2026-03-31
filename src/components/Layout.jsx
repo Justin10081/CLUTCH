@@ -1,145 +1,270 @@
-import { Outlet, NavLink, useLocation } from 'react-router-dom'
+import { useState, useEffect, useRef } from 'react'
+import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom'
+import { motion, useMotionValue, useSpring, AnimatePresence } from 'motion/react'
 import { useAuth } from '../context/AuthContext'
-import { useTheme } from '../context/ThemeContext'
+import StudyTimer from './StudyTimer'
 
-const navItems = [
-  { to: '/dashboard', label: 'Home', icon: HomeIcon },
-  { to: '/clutch', label: 'Clutch', icon: ZapIcon },
-  { to: '/gpa', label: 'GPA', icon: ChartIcon },
-  { to: '/deadlines', label: 'Deadlines', icon: ClockIcon },
+const PAGE_MAP = {
+  '/courses': 'Course Hub',
+  '/clutch': 'Clutch Mode',
+  '/gpa': 'GPA Simulator',
+  '/deadlines': 'Deadlines',
+  '/social': 'Ranked',
+  '/dashboard': 'Overview',
+}
+
+const NAV_ITEMS = [
+  { to: '/courses', label: 'Courses', sub: 'Your semester hub' },
+  { to: '/clutch', label: 'Clutch Mode', sub: 'AI study engine' },
+  { to: '/gpa', label: 'GPA Simulator', sub: 'What do you need?' },
+  { to: '/deadlines', label: 'Deadlines', sub: 'Stay on track' },
+  { to: '/social', label: 'Ranked', sub: 'Leaderboard & friends' },
 ]
 
-export default function Layout() {
-  const { signOut, user } = useAuth()
-  const { theme, toggleTheme } = useTheme()
+// Zero-lag crosshair — pure DOM, no React/spring overhead
+function CustomCursor() {
+  const ref = useRef(null)
+
+  useEffect(() => {
+    // Hide default cursor only while the app shell is mounted
+    document.body.style.cursor = 'none'
+    const style = document.createElement('style')
+    style.id = 'clutch-cursor-hide'
+    style.textContent = '* { cursor: none !important; }'
+    document.head.appendChild(style)
+
+    const h = e => {
+      if (ref.current) {
+        ref.current.style.transform = `translate(${e.clientX - 14}px,${e.clientY - 14}px)`
+      }
+    }
+    window.addEventListener('mousemove', h, { passive: true })
+
+    return () => {
+      document.body.style.cursor = ''
+      document.getElementById('clutch-cursor-hide')?.remove()
+      window.removeEventListener('mousemove', h)
+    }
+  }, [])
+
+  const line = { position: 'absolute', background: 'rgba(255,255,255,0.65)', borderRadius: 1 }
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ backgroundColor: 'var(--bg-primary)' }}>
-      {/* Top header */}
-      <header className="sticky top-0 z-50 glass-nav border-b" style={{ borderColor: 'var(--border-color)' }}>
-        <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
-          <NavLink to="/dashboard" className="flex items-center gap-2.5 group">
-            <div className="w-8 h-8 rounded-xl flex items-center justify-center glow-accent-sm transition-all duration-300 group-hover:scale-110"
-              style={{ background: 'linear-gradient(135deg, #7c3aed, #6d28d9)' }}>
-              <svg className="w-4.5 h-4.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-            </div>
-            <span className="font-extrabold text-base tracking-tight" style={{ color: 'var(--text-primary)' }}>CLUTCH</span>
-          </NavLink>
-
-          {/* Desktop nav */}
-          <nav className="hidden sm:flex items-center gap-1">
-            {navItems.map(({ to, label, icon: Icon }) => (
-              <NavLink key={to} to={to} className="group">
-                {({ isActive }) => (
-                  <span className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200"
-                    style={{
-                      backgroundColor: isActive ? 'var(--glow-color-soft)' : 'transparent',
-                      color: isActive ? 'var(--color-accent-400)' : 'var(--text-muted)',
-                    }}>
-                    <Icon active={isActive} />
-                    {label}
-                  </span>
-                )}
-              </NavLink>
-            ))}
-          </nav>
-
-          <div className="flex items-center gap-2">
-            <button onClick={toggleTheme}
-              className="p-2 rounded-lg transition-all duration-200 hover:bg-[var(--bg-input)]"
-              style={{ color: 'var(--text-muted)' }}>
-              {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
-            </button>
-            <button onClick={signOut}
-              className="hidden sm:flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg font-medium transition-all duration-200 hover:bg-[var(--bg-input)]"
-              style={{ color: 'var(--text-muted)' }}>
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-              </svg>
-              Sign out
-            </button>
-          </div>
-        </div>
-      </header>
-
-      {/* Page content */}
-      <main className="flex-1 max-w-2xl w-full mx-auto px-4 py-6">
-        <Outlet />
-      </main>
-
-      {/* Bottom nav — mobile only */}
-      <nav className="sm:hidden fixed bottom-0 left-0 right-0 glass-nav border-t z-50"
-        style={{ borderColor: 'var(--border-color)', paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}>
-        <div className="flex justify-around py-2">
-          {navItems.map(({ to, label, icon: Icon }) => (
-            <NavLink key={to} to={to} className="flex flex-col items-center gap-0.5 px-4 py-1 relative">
-              {({ isActive }) => (
-                <>
-                  {isActive && (
-                    <span className="absolute -top-2 left-1/2 -translate-x-1/2 w-8 h-0.5 rounded-full"
-                      style={{ background: 'linear-gradient(90deg, #7c3aed, #a78bfa)' }} />
-                  )}
-                  <Icon active={isActive} />
-                  <span className="text-[10px] font-semibold transition-colors duration-200"
-                    style={{ color: isActive ? 'var(--color-accent-400)' : 'var(--text-muted)' }}>
-                    {label}
-                  </span>
-                </>
-              )}
-            </NavLink>
-          ))}
-        </div>
-      </nav>
+    <div ref={ref} style={{
+      position: 'fixed', top: 0, left: 0, zIndex: 9999,
+      pointerEvents: 'none', width: 28, height: 28,
+      willChange: 'transform', transform: 'translate(-200px,-200px)',
+    }}>
+      <div style={{ position: 'absolute', top: '50%', left: '50%', width: 3, height: 3, borderRadius: '50%', background: 'white', transform: 'translate(-50%,-50%)' }} />
+      <div style={{ ...line, width: 1, height: 7, top: 1, left: '50%', transform: 'translateX(-50%)' }} />
+      <div style={{ ...line, width: 1, height: 7, bottom: 1, left: '50%', transform: 'translateX(-50%)' }} />
+      <div style={{ ...line, height: 1, width: 7, left: 1, top: '50%', transform: 'translateY(-50%)' }} />
+      <div style={{ ...line, height: 1, width: 7, right: 1, top: '50%', transform: 'translateY(-50%)' }} />
     </div>
   )
 }
 
-function HomeIcon({ active }) {
+// Ambient floating particles — kept lean (8 max, GPU-composited only)
+function Particles() {
+  const pts = useRef(
+    Array.from({ length: 8 }, (_, i) => ({
+      id: i,
+      left: (i / 8) * 100 + Math.random() * 10,
+      size: Math.random() * 2 + 1,
+      dur: Math.random() * 20 + 18,
+      delay: Math.random() * -28,
+      blue: i % 2 === 0,
+      opacity: Math.random() * 0.25 + 0.06,
+    }))
+  ).current
+
   return (
-    <svg className="w-5 h-5 transition-transform duration-200" style={{ color: active ? 'var(--color-accent-400)' : 'var(--text-muted)', transform: active ? 'scale(1.1)' : 'scale(1)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={active ? 2.5 : 2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0a1 1 0 01-1-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1" />
-    </svg>
+    <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', overflow: 'hidden', zIndex: 2 }}>
+      {pts.map(p => (
+        <div key={p.id} style={{
+          position: 'absolute',
+          left: `${p.left}%`,
+          bottom: -8,
+          width: p.size,
+          height: p.size,
+          borderRadius: '50%',
+          willChange: 'transform',
+          backgroundColor: p.blue ? `rgba(59,130,246,${p.opacity})` : `rgba(6,182,212,${p.opacity})`,
+          animation: `clutch-float ${p.dur}s ${p.delay}s linear infinite`,
+        }} />
+      ))}
+    </div>
   )
 }
 
-function ZapIcon({ active }) {
-  return (
-    <svg className="w-5 h-5 transition-transform duration-200" style={{ color: active ? 'var(--color-accent-400)' : 'var(--text-muted)', transform: active ? 'scale(1.1)' : 'scale(1)' }} fill={active ? 'var(--color-accent-400)' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={active ? 2.5 : 2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-    </svg>
-  )
-}
+export default function Layout() {
+  const [menuOpen, setMenuOpen] = useState(false)
+  const { user, signOut } = useAuth()
+  const location = useLocation()
+  const navigate = useNavigate()
+  const pageName = PAGE_MAP[location.pathname] || 'CLUTCH'
 
-function ChartIcon({ active }) {
-  return (
-    <svg className="w-5 h-5 transition-transform duration-200" style={{ color: active ? 'var(--color-accent-400)' : 'var(--text-muted)', transform: active ? 'scale(1.1)' : 'scale(1)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={active ? 2.5 : 2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-    </svg>
-  )
-}
+  useEffect(() => setMenuOpen(false), [location.pathname])
+  useEffect(() => {
+    document.body.style.overflow = menuOpen ? 'hidden' : ''
+    return () => { document.body.style.overflow = '' }
+  }, [menuOpen])
 
-function ClockIcon({ active }) {
-  return (
-    <svg className="w-5 h-5 transition-transform duration-200" style={{ color: active ? 'var(--color-accent-400)' : 'var(--text-muted)', transform: active ? 'scale(1.1)' : 'scale(1)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={active ? 2.5 : 2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-    </svg>
-  )
-}
+  const handleSignOut = async () => {
+    setMenuOpen(false)
+    await signOut()
+    navigate('/login')
+  }
 
-function SunIcon() {
-  return (
-    <svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-    </svg>
-  )
-}
+  const headerBg = menuOpen ? 'transparent' : 'rgba(8,10,14,0.75)'
+  const headerBorder = menuOpen ? 'none' : '1px solid rgba(255,255,255,0.05)'
 
-function MoonIcon() {
   return (
-    <svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-    </svg>
+    <div style={{ minHeight: '100vh', backgroundColor: '#080a0e', color: 'white', position: 'relative', cursor: 'none' }}>
+      <CustomCursor />
+      <Particles />
+
+      {/* Film grain — static, no animation to avoid full-screen repaints */}
+      <div style={{
+        position: 'fixed', inset: 0, zIndex: 1, pointerEvents: 'none',
+        backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E\")",
+        backgroundRepeat: 'repeat', backgroundSize: '200px 200px',
+        opacity: 0.025,
+      }} />
+
+      {/* ── HEADER ── */}
+      <header style={{
+        position: 'fixed', top: 0, left: 0, right: 0, zIndex: 200,
+        padding: '20px 32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        backdropFilter: menuOpen ? 'none' : 'blur(24px)',
+        WebkitBackdropFilter: menuOpen ? 'none' : 'blur(24px)',
+        background: headerBg, borderBottom: headerBorder,
+        transition: 'background 0.4s, border 0.4s',
+      }}>
+        <Link to="/courses" style={{ fontWeight: 900, fontSize: 16, letterSpacing: '-0.045em', color: menuOpen ? 'rgba(255,255,255,0.7)' : 'white', textDecoration: 'none', transition: 'color 0.3s', cursor: 'none' }}>
+          CLUTCH
+        </Link>
+
+        <AnimatePresence mode="wait">
+          {!menuOpen && (
+            <motion.span key={pageName}
+              initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.28 }}
+              style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.22em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.22)' }}>
+              {pageName}
+            </motion.span>
+          )}
+        </AnimatePresence>
+
+        {/* Timer button rendered by StudyTimer component */}
+        {!menuOpen && <StudyTimer />}
+
+        <button
+          onClick={() => setMenuOpen(v => !v)}
+          style={{ background: 'none', border: 'none', cursor: 'none', padding: '6px', display: 'flex', flexDirection: 'column', gap: 5, alignItems: 'flex-end' }}>
+          <motion.div animate={{ rotate: menuOpen ? 45 : 0, y: menuOpen ? 7 : 0, width: menuOpen ? 24 : 24 }}
+            transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+            style={{ width: 24, height: 1.5, background: 'white', borderRadius: 2, transformOrigin: 'center', display: 'block' }} />
+          <motion.div animate={{ opacity: menuOpen ? 0 : 1, scaleX: menuOpen ? 0 : 1 }}
+            transition={{ duration: 0.2 }}
+            style={{ width: 16, height: 1.5, background: 'rgba(255,255,255,0.5)', borderRadius: 2, transformOrigin: 'right' }} />
+          <motion.div animate={{ rotate: menuOpen ? -45 : 0, y: menuOpen ? -7 : 0 }}
+            transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+            style={{ width: 24, height: 1.5, background: 'white', borderRadius: 2, transformOrigin: 'center', display: 'block' }} />
+        </button>
+      </header>
+
+      {/* ── OVERLAY MENU ── */}
+      <AnimatePresence>
+        {menuOpen && (
+          <motion.div
+            initial={{ opacity: 0, clipPath: 'inset(0 0 100% 0)' }}
+            animate={{ opacity: 1, clipPath: 'inset(0 0 0% 0)' }}
+            exit={{ opacity: 0, clipPath: 'inset(0 0 100% 0)' }}
+            transition={{ duration: 0.55, ease: [0.16, 1, 0.3, 1] }}
+            style={{ position: 'fixed', inset: 0, zIndex: 150, backgroundColor: '#080a0e', display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '100px 48px 48px', overflow: 'hidden' }}>
+
+            {/* Background accent */}
+            <div style={{ position: 'absolute', top: '40%', right: '10%', width: 500, height: 400, borderRadius: '50%', background: 'radial-gradient(ellipse, rgba(59,130,246,0.07) 0%, transparent 70%)', pointerEvents: 'none' }} />
+
+            <nav style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+              {NAV_ITEMS.map((item, i) => (
+                <motion.div key={item.to}
+                  initial={{ opacity: 0, x: -50 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -50 }}
+                  transition={{ duration: 0.45, delay: i * 0.065, ease: [0.16, 1, 0.3, 1] }}>
+                  <Link to={item.to}
+                    style={{ display: 'block', textDecoration: 'none', borderBottom: '1px solid rgba(255,255,255,0.06)', padding: '22px 0', cursor: 'none' }}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 16 }}>
+                      <span style={{
+                        fontSize: 'clamp(36px, 5.5vw, 64px)', fontWeight: 900, letterSpacing: '-0.045em', lineHeight: 1,
+                        color: location.pathname === item.to ? 'white' : 'rgba(255,255,255,0.3)',
+                        transition: 'color 0.2s',
+                      }}>
+                        {item.label}
+                      </span>
+                      <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.18)', whiteSpace: 'nowrap' }}>
+                        {item.sub}
+                      </span>
+                    </div>
+                  </Link>
+                </motion.div>
+              ))}
+            </nav>
+
+            <motion.div
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.45 }}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 32, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+              <span style={{ fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.2)' }}>
+                {user?.email || 'demo@clutch.app'}
+              </span>
+              <button onClick={handleSignOut}
+                style={{ background: 'none', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 999, padding: '8px 22px', fontSize: 10, fontWeight: 800, letterSpacing: '0.15em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.38)', cursor: 'none', transition: 'border-color 0.2s, color 0.2s' }}>
+                Sign Out
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── MAIN ── */}
+      <main style={{ position: 'relative', zIndex: 10, minHeight: '100vh', paddingTop: '76px' }}>
+        <AnimatePresence mode="wait">
+          <motion.div key={location.pathname}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}>
+            <Outlet />
+          </motion.div>
+        </AnimatePresence>
+      </main>
+
+      {/* ── ELEMENT LABEL ── */}
+      <AnimatePresence mode="wait">
+        <motion.div key={pageName}
+          initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+          transition={{ duration: 0.5 }}
+          style={{ position: 'fixed', bottom: 28, left: 28, zIndex: 50, pointerEvents: 'none', userSelect: 'none' }}>
+          <div style={{ fontSize: 8, letterSpacing: '0.25em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.18)', marginBottom: 3 }}>ELEMENT</div>
+          <div style={{ fontSize: 12, fontWeight: 900, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.35)' }}>{pageName}</div>
+        </motion.div>
+      </AnimatePresence>
+
+      {/* ── SIDE NAV DOTS ── */}
+      <div style={{ position: 'fixed', right: 24, top: '50%', transform: 'translateY(-50%)', zIndex: 50, display: 'flex', flexDirection: 'column', gap: 10, pointerEvents: 'none' }}>
+        {NAV_ITEMS.map(item => (
+          <motion.div key={item.to}
+            animate={{
+              height: location.pathname === item.to ? 22 : 5,
+              backgroundColor: location.pathname === item.to ? '#3b82f6' : 'rgba(255,255,255,0.15)',
+              boxShadow: location.pathname === item.to ? '0 0 12px rgba(59,130,246,0.7)' : 'none',
+            }}
+            transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+            style={{ width: 4, borderRadius: 999 }} />
+        ))}
+      </div>
+    </div>
   )
 }

@@ -1,19 +1,22 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { motion, AnimatePresence } from 'motion/react'
+import { useGPA } from '../context/GPAContext'
 
+// ─── Grade scale ────────────────────────────────────────────────────────────
 const GRADE_SCALE = [
-  { label: 'A+', value: 4.0, min: 90 },
-  { label: 'A', value: 4.0, min: 85 },
-  { label: 'A-', value: 3.7, min: 80 },
-  { label: 'B+', value: 3.3, min: 77 },
-  { label: 'B', value: 3.0, min: 73 },
-  { label: 'B-', value: 2.7, min: 70 },
-  { label: 'C+', value: 2.3, min: 67 },
-  { label: 'C', value: 2.0, min: 63 },
-  { label: 'C-', value: 1.7, min: 60 },
-  { label: 'D+', value: 1.3, min: 57 },
-  { label: 'D', value: 1.0, min: 53 },
-  { label: 'D-', value: 0.7, min: 50 },
-  { label: 'F', value: 0.0, min: 0 },
+  { label: 'A+', value: 4.0, min: 97 },
+  { label: 'A',  value: 4.0, min: 93 },
+  { label: 'A-', value: 3.7, min: 90 },
+  { label: 'B+', value: 3.3, min: 87 },
+  { label: 'B',  value: 3.0, min: 83 },
+  { label: 'B-', value: 2.7, min: 80 },
+  { label: 'C+', value: 2.3, min: 77 },
+  { label: 'C',  value: 2.0, min: 73 },
+  { label: 'C-', value: 1.7, min: 70 },
+  { label: 'D+', value: 1.3, min: 67 },
+  { label: 'D',  value: 1.0, min: 63 },
+  { label: 'D-', value: 0.7, min: 60 },
+  { label: 'F',  value: 0.0, min: 0  },
 ]
 
 function percentToGPA(pct) {
@@ -24,41 +27,596 @@ function percentToLetter(pct) {
   for (const g of GRADE_SCALE) { if (pct >= g.min) return g.label }
   return 'F'
 }
+function letterToGPA(letter) {
+  const entry = GRADE_SCALE.find(g => g.label === letter)
+  return entry ? entry.value : null
+}
 function gpaToLetter(gpa) {
-  return GRADE_SCALE.reduce((prev, curr) => Math.abs(curr.value - gpa) < Math.abs(prev.value - gpa) ? curr : prev).label
+  return GRADE_SCALE.reduce((prev, curr) =>
+    Math.abs(curr.value - gpa) < Math.abs(prev.value - gpa) ? curr : prev
+  ).label
 }
-
 function gpaColor(gpa) {
-  if (gpa >= 3.5) return 'var(--color-success-400)'
-  if (gpa >= 2.5) return 'var(--color-warning-400)'
-  return 'var(--color-danger-400)'
+  if (gpa >= 3.5) return '#22c55e'
+  if (gpa >= 2.5) return '#f59e0b'
+  if (gpa >= 1.0) return '#f97316'
+  return '#ef4444'
 }
-
 function gradeColor(pct) {
-  if (pct >= 80) return 'var(--color-success-400)'
-  if (pct >= 60) return 'var(--color-warning-400)'
-  return 'var(--color-danger-400)'
+  if (pct >= 80) return '#22c55e'
+  if (pct >= 60) return '#f59e0b'
+  return '#ef4444'
 }
 
-const EMPTY_COURSE = { name: '', currentGrade: 75, finalWeight: 30, finalScore: 70, credits: 3 }
+const EMPTY_COURSE = {
+  name: '',
+  code: '',
+  currentGrade: 75,
+  finalWeight: 30,
+  finalScore: 70,
+  credits: 3,
+  actualGrade: null,   // letter grade entered after completing
+  targetGrade: 'B+',   // letter grade target
+}
 
-export default function GPASimulator() {
-  const [courses, setCourses] = useState(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem('clutch-gpa-courses'))
-      return saved?.length ? saved : [{ ...EMPTY_COURSE, name: 'Course 1' }]
-    } catch { return [{ ...EMPTY_COURSE, name: 'Course 1' }] }
+const SEMESTER_LABEL = (() => {
+  const now = new Date()
+  const month = now.getMonth()
+  const year = now.getFullYear()
+  if (month >= 8) return `Fall ${year}`
+  if (month >= 5) return `Summer ${year}`
+  return `Spring ${year}`
+})()
+
+// ─── Styles ──────────────────────────────────────────────────────────────────
+const S = {
+  page: {
+    background: '#080a0e',
+    minHeight: '100vh',
+    padding: '0 0 120px 0',
+    fontFamily: 'inherit',
+  },
+  sceneLabel: {
+    fontSize: 10,
+    fontWeight: 900,
+    letterSpacing: '0.2em',
+    textTransform: 'uppercase',
+    color: '#3b82f6',
+    marginBottom: 4,
+  },
+  heading: {
+    fontSize: 26,
+    fontWeight: 900,
+    color: '#f1f5f9',
+    letterSpacing: '-0.03em',
+    lineHeight: 1.1,
+  },
+  subheading: {
+    fontSize: 12,
+    color: '#475569',
+    marginTop: 4,
+    fontWeight: 600,
+  },
+  card: {
+    background: '#0d1117',
+    border: '1px solid #1e2530',
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  sectionLabel: {
+    fontSize: 10,
+    fontWeight: 900,
+    letterSpacing: '0.2em',
+    textTransform: 'uppercase',
+    color: '#334155',
+    marginBottom: 12,
+    paddingLeft: 2,
+  },
+  input: {
+    background: '#131922',
+    border: '1px solid #1e2530',
+    borderRadius: 10,
+    color: '#f1f5f9',
+    fontSize: 13,
+    fontWeight: 600,
+    padding: '10px 14px',
+    outline: 'none',
+    width: '100%',
+    boxSizing: 'border-box',
+    transition: 'border-color 0.2s',
+  },
+  btn: {
+    background: 'linear-gradient(135deg, #3b82f6, #06b6d4)',
+    border: 'none',
+    borderRadius: 12,
+    color: '#fff',
+    cursor: 'pointer',
+    fontSize: 13,
+    fontWeight: 900,
+    padding: '12px 20px',
+    transition: 'opacity 0.15s, transform 0.1s',
+  },
+  btnGhost: {
+    background: '#131922',
+    border: '1px solid #1e2530',
+    borderRadius: 12,
+    color: '#64748b',
+    cursor: 'pointer',
+    fontSize: 13,
+    fontWeight: 700,
+    padding: '12px 20px',
+    transition: 'background 0.2s',
+  },
+}
+
+// ─── Sparkline component ─────────────────────────────────────────────────────
+function Sparkline({ data, width = 120, height = 32 }) {
+  if (!data || data.length < 2) return null
+  const min = Math.min(...data, 0)
+  const max = Math.max(...data, 4)
+  const range = max - min || 1
+  const pts = data.map((v, i) => {
+    const x = (i / (data.length - 1)) * width
+    const y = height - ((v - min) / range) * height
+    return `${x},${y}`
+  }).join(' ')
+  const lastColor = gpaColor(data[data.length - 1])
+  return (
+    <svg width={width} height={height} style={{ overflow: 'visible' }}>
+      <polyline points={pts} fill="none" stroke={lastColor} strokeWidth={2}
+        strokeLinejoin="round" strokeLinecap="round"
+        style={{ filter: `drop-shadow(0 0 4px ${lastColor}80)` }} />
+      {data.map((v, i) => {
+        const x = (i / (data.length - 1)) * width
+        const y = height - ((v - min) / range) * height
+        return <circle key={i} cx={x} cy={y} r={3} fill={gpaColor(v)} />
+      })}
+    </svg>
+  )
+}
+
+// ─── Big circular GPA gauge ──────────────────────────────────────────────────
+function GPAGauge({ gpa }) {
+  const size = 180
+  const strokeW = 12
+  const r = (size / 2) - strokeW
+  // Arc: 220 degrees (starting -200deg from top going clockwise)
+  const arcDeg = 240
+  const startAngle = -210
+  const circ = 2 * Math.PI * r
+  const arcLen = (arcDeg / 360) * circ
+  const pct = Math.min(gpa / 4, 1)
+  const fill = pct * arcLen
+  const color = gpaColor(gpa)
+  const toRad = d => (d * Math.PI) / 180
+  const cx = size / 2
+  const cy = size / 2
+  // Convert angle to point on circle
+  const pt = (deg) => ({
+    x: cx + r * Math.cos(toRad(deg)),
+    y: cy + r * Math.sin(toRad(deg)),
   })
-  const [cumulativeGPA, setCumulativeGPA] = useState(() => parseFloat(localStorage.getItem('clutch-cumulative-gpa') || '0'))
-  const [cumulativeCredits, setCumulativeCredits] = useState(() => parseInt(localStorage.getItem('clutch-cumulative-credits') || '0'))
+  const endAngle = startAngle + arcDeg
+  const s = pt(startAngle)
+  const e = pt(endAngle)
+  const largeArc = arcDeg > 180 ? 1 : 0
+  const trackPath = `M ${s.x} ${s.y} A ${r} ${r} 0 ${largeArc} 1 ${e.x} ${e.y}`
+  const fillE = pt(startAngle + pct * arcDeg)
+  const fillLarge = pct * arcDeg > 180 ? 1 : 0
+  const fillPath = `M ${s.x} ${s.y} A ${r} ${r} 0 ${fillLarge} 1 ${fillE.x} ${fillE.y}`
+
+  return (
+    <div style={{ position: 'relative', width: size, height: size, margin: '0 auto' }}>
+      <svg width={size} height={size} style={{ overflow: 'visible' }}>
+        {/* Track */}
+        <path d={trackPath} fill="none" stroke="#1e2530" strokeWidth={strokeW} strokeLinecap="round" />
+        {/* Fill */}
+        <motion.path
+          d={fillPath}
+          fill="none"
+          stroke={color}
+          strokeWidth={strokeW}
+          strokeLinecap="round"
+          initial={{ pathLength: 0 }}
+          animate={{ pathLength: 1 }}
+          transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
+          style={{ filter: `drop-shadow(0 0 8px ${color})` }}
+        />
+        {/* Min/max labels */}
+        <text x={s.x - 6} y={s.y + 16} fill="#334155" fontSize="10" fontWeight="700" textAnchor="middle">0.0</text>
+        <text x={e.x + 6} y={e.y + 16} fill="#334155" fontSize="10" fontWeight="700" textAnchor="middle">4.0</text>
+      </svg>
+      <div style={{
+        position: 'absolute', inset: 0,
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+        paddingTop: 16,
+      }}>
+        <div style={{ fontSize: 42, fontWeight: 900, color, letterSpacing: '-0.04em', lineHeight: 1 }}>
+          {gpa.toFixed(2)}
+        </div>
+        <div style={{ fontSize: 13, color: '#475569', fontWeight: 700, marginTop: 2 }}>/ 4.0</div>
+        <div style={{ fontSize: 11, color, fontWeight: 900, marginTop: 4, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+          {gpaToLetter(gpa)}
+        </div>
+        <div style={{ fontSize: 10, color: '#334155', fontWeight: 700, marginTop: 2 }}>
+          {gpa >= 3.7 ? "Dean's List" : gpa >= 3.0 ? 'On Track' : gpa >= 2.0 ? 'Passing' : 'Needs Work'}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Scenario bar ────────────────────────────────────────────────────────────
+function ScenarioBar({ worst, current, best }) {
+  const scenarios = [
+    { label: 'WORST CASE', gpa: worst, note: 'All finals → 50%' },
+    { label: 'CURRENT',    gpa: current, note: 'Projected trajectory', highlight: true },
+    { label: 'BEST CASE',  gpa: best, note: 'All finals → 100%' },
+  ]
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 1, background: '#1e2530', borderRadius: 14, overflow: 'hidden' }}>
+      {scenarios.map(({ label, gpa, note, highlight }) => (
+        <div key={label} style={{
+          background: highlight ? '#0f1825' : '#0d1117',
+          padding: '14px 12px',
+          textAlign: 'center',
+          position: 'relative',
+        }}>
+          {highlight && (
+            <div style={{
+              position: 'absolute', top: 0, left: '20%', right: '20%', height: 2,
+              background: 'linear-gradient(90deg, transparent, #3b82f6, transparent)',
+            }} />
+          )}
+          <div style={{ fontSize: 9, fontWeight: 900, letterSpacing: '0.15em', textTransform: 'uppercase', color: '#334155', marginBottom: 4 }}>
+            {label}
+          </div>
+          <div style={{ fontSize: 22, fontWeight: 900, color: gpaColor(gpa), letterSpacing: '-0.03em', lineHeight: 1 }}>
+            {gpa.toFixed(2)}
+          </div>
+          <div style={{ fontSize: 9, color: '#334155', marginTop: 3, fontWeight: 600 }}>{note}</div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ─── Grade scale reference ───────────────────────────────────────────────────
+function GradeScaleRef() {
+  const [open, setOpen] = useState(false)
+  return (
+    <div style={{ ...S.card }}>
+      <button
+        onClick={() => setOpen(v => !v)}
+        style={{
+          width: '100%', padding: '14px 18px', display: 'flex', alignItems: 'center',
+          justifyContent: 'space-between', background: 'none', border: 'none',
+          cursor: 'pointer', textAlign: 'left',
+        }}>
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 900, color: '#f1f5f9', letterSpacing: '0.05em' }}>
+            GRADE SCALE REFERENCE
+          </div>
+          <div style={{ fontSize: 11, color: '#475569', marginTop: 2, fontWeight: 600 }}>
+            Letter grades → GPA points
+          </div>
+        </div>
+        <motion.div animate={{ rotate: open ? 180 : 0 }} transition={{ duration: 0.2 }}>
+          <svg width={16} height={16} fill="none" viewBox="0 0 24 24" stroke="#475569" strokeWidth={2.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        </motion.div>
+      </button>
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.25 }}
+            style={{ overflow: 'hidden' }}>
+            <div style={{ borderTop: '1px solid #1e2530', padding: '14px 18px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
+                {GRADE_SCALE.map(g => (
+                  <div key={g.label} style={{
+                    background: '#131922', borderRadius: 8, padding: '7px 8px', textAlign: 'center',
+                  }}>
+                    <div style={{ fontSize: 13, fontWeight: 900, color: gradeColor(g.min) }}>{g.label}</div>
+                    <div style={{ fontSize: 10, color: '#475569', fontWeight: 700, marginTop: 1 }}>{g.value.toFixed(1)}</div>
+                    <div style={{ fontSize: 9, color: '#334155', marginTop: 1 }}>{g.min}%+</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}
+
+// ─── Course row ──────────────────────────────────────────────────────────────
+function CourseRow({ course, index, onUpdate, onRemove, targetGPA, cumulativeGPA, cumulativeCredits, allCourses, getProjectedGrade }) {
+  const [editingTarget, setEditingTarget] = useState(false)
+  const [editingActual, setEditingActual] = useState(false)
+  const [targetInput, setTargetInput] = useState(course.targetGrade || 'B+')
+  const [actualInput, setActualInput] = useState(course.actualGrade || '')
+  const targetRef = useRef(null)
+  const actualRef = useRef(null)
+
+  useEffect(() => { if (editingTarget && targetRef.current) targetRef.current.focus() }, [editingTarget])
+  useEffect(() => { if (editingActual && actualRef.current) actualRef.current.focus() }, [editingActual])
+
+  const projected = getProjectedGrade(course)
+  const effectiveGrade = course.actualGrade
+    ? (GRADE_SCALE.find(g => g.label === course.actualGrade)?.min ?? projected)
+    : projected
+  const gradePoints = percentToGPA(effectiveGrade) * course.credits
+
+  // "What do I need on the final?" calculation
+  const computeNeeded = () => {
+    const targetLetterEntry = GRADE_SCALE.find(g => g.label === (course.targetGrade || 'B+'))
+    const neededPct = targetLetterEntry ? targetLetterEntry.min : 83
+    const preWeight = 1 - (course.finalWeight / 100)
+    const needed = (neededPct - course.currentGrade * preWeight) / (course.finalWeight / 100)
+    if (needed <= 0) return { score: 0, impossible: false }
+    if (needed > 100) return { score: null, impossible: true }
+    return { score: Math.ceil(needed), impossible: false }
+  }
+  const needed = computeNeeded()
+
+  const commitTarget = (val) => {
+    const clean = val.toUpperCase().trim()
+    const valid = GRADE_SCALE.find(g => g.label === clean)
+    if (valid) onUpdate(index, 'targetGrade', clean)
+    setEditingTarget(false)
+  }
+  const commitActual = (val) => {
+    const clean = val.toUpperCase().trim()
+    if (!clean) { onUpdate(index, 'actualGrade', null); setEditingActual(false); return }
+    const valid = GRADE_SCALE.find(g => g.label === clean)
+    if (valid) onUpdate(index, 'actualGrade', clean)
+    setEditingActual(false)
+  }
+
+  const actualGPAVal = course.actualGrade ? letterToGPA(course.actualGrade) : null
+  const hasActual = course.actualGrade !== null && course.actualGrade !== undefined
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 14 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.05, duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+      style={{ ...S.card, position: 'relative' }}>
+      {/* Course color bar */}
+      <div style={{
+        position: 'absolute', top: 0, left: 0, right: 0, height: 2,
+        background: `linear-gradient(90deg, #3b82f6, #06b6d4)`,
+        opacity: 0.6,
+      }} />
+
+      <div style={{ padding: '18px 18px 14px' }}>
+        {/* Header row */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 16 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <input
+              type="text"
+              value={course.name}
+              onChange={e => onUpdate(index, 'name', e.target.value)}
+              style={{
+                background: 'transparent', border: 'none', borderBottom: '1px solid transparent',
+                color: '#f1f5f9', fontSize: 15, fontWeight: 900, outline: 'none',
+                width: '100%', padding: '2px 0',
+                transition: 'border-color 0.2s',
+              }}
+              placeholder="Course name"
+              onFocus={e => e.target.style.borderBottomColor = '#3b82f6'}
+              onBlur={e => e.target.style.borderBottomColor = 'transparent'}
+            />
+            <input
+              type="text"
+              value={course.code || ''}
+              onChange={e => onUpdate(index, 'code', e.target.value)}
+              style={{
+                background: 'transparent', border: 'none',
+                color: '#475569', fontSize: 11, fontWeight: 700, outline: 'none',
+                width: '100%', padding: '2px 0', marginTop: 2,
+              }}
+              placeholder="Course code (e.g. MATH 101)"
+            />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+            <div style={{
+              background: '#131922', border: '1px solid #1e2530', borderRadius: 8,
+              padding: '4px 10px', fontSize: 11, fontWeight: 900, color: '#64748b',
+            }}>
+              {course.credits} cr
+            </div>
+            {allCourses.length > 1 && (
+              <button onClick={() => onRemove(index)} style={{
+                background: 'none', border: 'none', cursor: 'pointer', padding: 6,
+                color: '#ef4444', borderRadius: 8, display: 'flex', alignItems: 'center',
+                opacity: 0.6, transition: 'opacity 0.15s',
+              }} onMouseEnter={e => e.currentTarget.style.opacity = 1}
+                onMouseLeave={e => e.currentTarget.style.opacity = 0.6}>
+                <svg width={14} height={14} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Sliders */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}>
+          <SliderRow label="Credits" value={course.credits} min={0.5} max={6} step={0.5}
+            onChange={v => onUpdate(index, 'credits', parseFloat(v))}
+            display={`${course.credits}`} />
+          <SliderRow label="Current grade (before final)" value={course.currentGrade} min={0} max={100} step={1}
+            onChange={v => onUpdate(index, 'currentGrade', parseInt(v))}
+            display={`${course.currentGrade}% (${percentToLetter(course.currentGrade)})`}
+            displayColor={gradeColor(course.currentGrade)} />
+          <SliderRow label="Final exam weight" value={course.finalWeight} min={5} max={70} step={5}
+            onChange={v => onUpdate(index, 'finalWeight', parseInt(v))}
+            display={`${course.finalWeight}%`} />
+          <SliderRow label="What if I score on the final..." value={course.finalScore} min={0} max={100} step={1}
+            onChange={v => onUpdate(index, 'finalScore', parseInt(v))}
+            display={`${course.finalScore}%`}
+            displayColor="#06b6d4" />
+        </div>
+
+        {/* Grade cells row */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 8, marginBottom: 14 }}>
+          {/* Target grade */}
+          <div style={{ background: '#131922', borderRadius: 10, padding: '10px 10px', textAlign: 'center' }}>
+            <div style={{ fontSize: 9, fontWeight: 900, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 4 }}>Target</div>
+            {editingTarget ? (
+              <input
+                ref={targetRef}
+                type="text"
+                defaultValue={course.targetGrade || 'B+'}
+                style={{
+                  background: 'transparent', border: 'none', borderBottom: '1px solid #3b82f6',
+                  color: '#3b82f6', fontSize: 16, fontWeight: 900, textAlign: 'center',
+                  outline: 'none', width: '100%', padding: '2px 0',
+                }}
+                onBlur={e => commitTarget(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') commitTarget(e.target.value) }}
+              />
+            ) : (
+              <div
+                onClick={() => setEditingTarget(true)}
+                style={{ fontSize: 16, fontWeight: 900, color: '#3b82f6', cursor: 'pointer', lineHeight: 1 }}
+                title="Click to edit target grade">
+                {course.targetGrade || 'B+'}
+              </div>
+            )}
+          </div>
+
+          {/* Actual grade */}
+          <div style={{
+            background: hasActual ? '#0f1f14' : '#131922',
+            border: hasActual ? '1px solid #22c55e30' : '1px solid transparent',
+            borderRadius: 10, padding: '10px 10px', textAlign: 'center',
+            transition: 'all 0.3s',
+          }}>
+            <div style={{ fontSize: 9, fontWeight: 900, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 4 }}>
+              {hasActual ? 'ACTUAL' : 'ACTUAL'}
+            </div>
+            {editingActual ? (
+              <input
+                ref={actualRef}
+                type="text"
+                defaultValue={course.actualGrade || ''}
+                style={{
+                  background: 'transparent', border: 'none', borderBottom: '1px solid #22c55e',
+                  color: '#22c55e', fontSize: 16, fontWeight: 900, textAlign: 'center',
+                  outline: 'none', width: '100%', padding: '2px 0',
+                }}
+                placeholder="A-"
+                onBlur={e => commitActual(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') commitActual(e.target.value) }}
+              />
+            ) : (
+              <div
+                onClick={() => setEditingActual(true)}
+                style={{
+                  fontSize: 16, fontWeight: 900,
+                  color: hasActual ? '#22c55e' : '#334155',
+                  cursor: 'pointer', lineHeight: 1,
+                }}
+                title="Click to enter actual grade">
+                {course.actualGrade || '--'}
+              </div>
+            )}
+            {hasActual && (
+              <div style={{ fontSize: 9, color: '#22c55e', marginTop: 2, fontWeight: 700 }}>confirmed</div>
+            )}
+          </div>
+
+          {/* Grade points */}
+          <div style={{ background: '#131922', borderRadius: 10, padding: '10px 10px', textAlign: 'center' }}>
+            <div style={{ fontSize: 9, fontWeight: 900, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 4 }}>Pts × Cr</div>
+            <div style={{ fontSize: 16, fontWeight: 900, color: gpaColor(gradePoints / course.credits), lineHeight: 1 }}>
+              {gradePoints.toFixed(1)}
+            </div>
+            <div style={{ fontSize: 9, color: '#334155', marginTop: 2 }}>{(gradePoints / course.credits).toFixed(1)} GPA</div>
+          </div>
+
+          {/* Need on final */}
+          <div style={{
+            background: needed.impossible ? '#1f0f0f' : '#131922',
+            border: needed.impossible ? '1px solid #ef444430' : '1px solid transparent',
+            borderRadius: 10, padding: '10px 8px', textAlign: 'center',
+          }}>
+            <div style={{ fontSize: 9, fontWeight: 900, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>
+              Need Final
+            </div>
+            {needed.impossible ? (
+              <div style={{ fontSize: 11, fontWeight: 900, color: '#ef4444', lineHeight: 1.2 }}>Not<br />Possible</div>
+            ) : (
+              <>
+                <div style={{ fontSize: 16, fontWeight: 900, color: gradeColor(100 - (needed.score || 0)), lineHeight: 1 }}>
+                  {needed.score === 0 ? 'Done!' : `${needed.score}%`}
+                </div>
+                <div style={{ fontSize: 9, color: '#334155', marginTop: 2 }}>for {course.targetGrade || 'B+'}</div>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Projected result bar */}
+        <div style={{ borderTop: '1px solid #1e2530', paddingTop: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: '#475569' }}>
+              {hasActual ? 'ACTUAL GRADE' : 'PROJECTED FINAL'}
+              {hasActual && <span style={{ marginLeft: 6, color: '#22c55e', fontSize: 9 }}>● live</span>}
+            </span>
+            <span style={{ fontSize: 13, fontWeight: 900, color: gradeColor(effectiveGrade) }}>
+              {effectiveGrade.toFixed(1)}% — {percentToLetter(effectiveGrade)}
+            </span>
+          </div>
+          <div style={{ height: 6, background: '#1e2530', borderRadius: 99, overflow: 'hidden' }}>
+            <motion.div
+              animate={{ width: `${Math.min(effectiveGrade, 100)}%` }}
+              initial={{ width: 0 }}
+              transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+              style={{
+                height: '100%', borderRadius: 99,
+                background: `linear-gradient(90deg, ${gradeColor(effectiveGrade)}, ${gradeColor(effectiveGrade)}99)`,
+                boxShadow: `0 0 8px ${gradeColor(effectiveGrade)}60`,
+              }}
+            />
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  )
+}
+
+// ─── Slider row ──────────────────────────────────────────────────────────────
+function SliderRow({ label, value, min, max, step, onChange, display, displayColor }) {
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+        <span style={{ fontSize: 11, fontWeight: 600, color: '#475569' }}>{label}</span>
+        <span style={{ fontSize: 11, fontWeight: 900, color: displayColor || '#94a3b8' }}>{display}</span>
+      </div>
+      <input type="range" min={min} max={max} step={step} value={value}
+        onChange={e => onChange(e.target.value)}
+        style={{ width: '100%', accentColor: '#3b82f6' }} />
+    </div>
+  )
+}
+
+// ─── Main component ──────────────────────────────────────────────────────────
+export default function GPASimulator() {
+  const { courses, setCourses, cumulativeGPA, setCumulativeGPA, cumulativeCredits, setCumulativeCredits } = useGPA()
   const [targetGPA, setTargetGPA] = useState(3.5)
   const [showPrevious, setShowPrevious] = useState(false)
-
-  useEffect(() => { localStorage.setItem('clutch-gpa-courses', JSON.stringify(courses)) }, [courses])
-  useEffect(() => {
-    localStorage.setItem('clutch-cumulative-gpa', cumulativeGPA.toString())
-    localStorage.setItem('clutch-cumulative-credits', cumulativeCredits.toString())
-  }, [cumulativeGPA, cumulativeCredits])
+  const [gpaHistory] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('clutch-gpa-history')) || [] } catch { return [] }
+  })
 
   const updateCourse = (index, field, value) =>
     setCourses(prev => prev.map((c, i) => i === index ? { ...c, [field]: value } : c))
@@ -66,15 +624,29 @@ export default function GPASimulator() {
   const removeCourse = (index) => { if (courses.length <= 1) return; setCourses(prev => prev.filter((_, i) => i !== index)) }
 
   const getProjectedGrade = (course) => {
+    if (course.actualGrade) {
+      const entry = GRADE_SCALE.find(g => g.label === course.actualGrade)
+      return entry ? entry.min : 0
+    }
     const preWeight = 1 - (course.finalWeight / 100)
     return (course.currentGrade * preWeight) + (course.finalScore * (course.finalWeight / 100))
   }
 
-  const semesterGPA = (() => {
+  const calcSemesterGPA = (overrideFinalScore) => {
     let totalPoints = 0, totalCredits = 0
-    courses.forEach(c => { totalPoints += percentToGPA(getProjectedGrade(c)) * c.credits; totalCredits += c.credits })
+    courses.forEach(c => {
+      const grade = overrideFinalScore !== undefined
+        ? (c.currentGrade * (1 - c.finalWeight / 100)) + (overrideFinalScore * (c.finalWeight / 100))
+        : getProjectedGrade(c)
+      totalPoints += percentToGPA(grade) * c.credits
+      totalCredits += c.credits
+    })
     return totalCredits > 0 ? totalPoints / totalCredits : 0
-  })()
+  }
+
+  const semesterGPA = calcSemesterGPA()
+  const worstGPA = calcSemesterGPA(50)
+  const bestGPA = calcSemesterGPA(100)
 
   const projectedCumulativeGPA = (() => {
     const semCredits = courses.reduce((sum, c) => sum + c.credits, 0)
@@ -83,212 +655,207 @@ export default function GPASimulator() {
     return ((cumulativeGPA * cumulativeCredits) + (semesterGPA * semCredits)) / totalCredits
   })()
 
-  const getMinFinalScore = (courseIndex) => {
-    const course = courses[courseIndex]
-    const preWeight = 1 - (course.finalWeight / 100)
-    const otherCourses = courses.filter((_, i) => i !== courseIndex)
-    const otherPoints = otherCourses.reduce((sum, c) => sum + percentToGPA(getProjectedGrade(c)) * c.credits, 0)
-    const totalCredits = cumulativeCredits + courses.reduce((sum, c) => sum + c.credits, 0)
-    const neededTotalPoints = targetGPA * totalCredits
-    const neededFromThisCourse = (neededTotalPoints - (cumulativeGPA * cumulativeCredits) - otherPoints) / course.credits
-    for (let score = 0; score <= 100; score++) {
-      const projected = course.currentGrade * preWeight + score * (course.finalWeight / 100)
-      if (percentToGPA(projected) >= neededFromThisCourse) return score
-    }
-    return null
-  }
+  const worstCumulative = (() => {
+    const semCredits = courses.reduce((sum, c) => sum + c.credits, 0)
+    const totalCredits = cumulativeCredits + semCredits
+    if (totalCredits === 0) return worstGPA
+    return ((cumulativeGPA * cumulativeCredits) + (worstGPA * semCredits)) / totalCredits
+  })()
+
+  const bestCumulative = (() => {
+    const semCredits = courses.reduce((sum, c) => sum + c.credits, 0)
+    const totalCredits = cumulativeCredits + semCredits
+    if (totalCredits === 0) return bestGPA
+    return ((cumulativeGPA * cumulativeCredits) + (bestGPA * semCredits)) / totalCredits
+  })()
+
+  const historyWithCurrent = [...gpaHistory, semesterGPA]
 
   return (
-    <div className="space-y-5 pb-24 sm:pb-8 animate-fade-up">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-extrabold tracking-tight" style={{ color: 'var(--text-primary)' }}>GPA Simulator</h1>
-        <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>Drag sliders to see exactly what you need on your finals</p>
-      </div>
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+      style={S.page}>
 
-      {/* GPA Summary Cards */}
-      <div className="grid grid-cols-2 gap-3">
-        <GPACard label="Semester GPA" gpa={semesterGPA} />
-        <GPACard label="Projected Cumulative" gpa={projectedCumulativeGPA} />
-      </div>
-
-      {/* Target GPA */}
-      <div className="card p-4">
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <h3 className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>Target GPA</h3>
-            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>What are you aiming for?</p>
-          </div>
-          <div className="text-right">
-            <div className="text-2xl font-black" style={{ color: '#7c3aed' }}>{targetGPA.toFixed(1)}</div>
-            <div className="text-[11px] font-semibold" style={{ color: 'var(--text-muted)' }}>{gpaToLetter(targetGPA)}</div>
-          </div>
+      {/* ── SCENE HEADER ── */}
+      <div style={{ padding: '8px 20px 0' }}>
+        <div style={S.sceneLabel}>SCENE 00 — GPA SIMULATOR</div>
+        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
+          <h1 style={S.heading}>GPA Simulator</h1>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#334155', paddingBottom: 4 }}>{SEMESTER_LABEL}</div>
         </div>
-        <input type="range" min="0" max="4" step="0.1" value={targetGPA} onChange={e => setTargetGPA(parseFloat(e.target.value))} />
-        <div className="flex justify-between text-[10px] mt-1.5 font-medium" style={{ color: 'var(--text-muted)' }}>
-          <span>0.0</span><span>1.0</span><span>2.0</span><span>3.0</span><span>4.0</span>
+        <p style={S.subheading}>Project finals. Enter actuals. Know exactly where you stand.</p>
+      </div>
+
+      <div style={{ padding: '20px 20px 0', display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+        {/* ── BIG GPA GAUGE ── */}
+        <div style={{ ...S.card, padding: '28px 20px 20px', textAlign: 'center' }}>
+          <div style={S.sceneLabel}>CURRENT SEMESTER GPA</div>
+          <GPAGauge gpa={semesterGPA} />
+          {historyWithCurrent.length > 1 && (
+            <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#334155' }}>TREND</div>
+              <Sparkline data={historyWithCurrent} width={120} height={28} />
+            </div>
+          )}
+          {cumulativeCredits > 0 && (
+            <div style={{ marginTop: 12, fontSize: 12, color: '#475569', fontWeight: 600 }}>
+              Cumulative (projected):{' '}
+              <span style={{ color: gpaColor(projectedCumulativeGPA), fontWeight: 900 }}>
+                {projectedCumulativeGPA.toFixed(2)}
+              </span>
+            </div>
+          )}
         </div>
-      </div>
 
-      {/* Previous semesters (collapsible) */}
-      <div className="card overflow-hidden">
-        <button onClick={() => setShowPrevious(v => !v)} className="w-full p-4 flex items-center justify-between text-left">
-          <div>
-            <h3 className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>Previous Semesters</h3>
-            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-              {cumulativeCredits > 0 ? `${cumulativeCredits} credits · ${cumulativeGPA.toFixed(2)} GPA` : 'Optional — for cumulative GPA'}
-            </p>
-          </div>
-          <svg className="w-4 h-4 transition-transform duration-200" style={{ color: 'var(--text-muted)', transform: showPrevious ? 'rotate(180deg)' : '' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-          </svg>
-        </button>
-        {showPrevious && (
-          <div className="px-4 pb-4 pt-0 grid grid-cols-2 gap-3 border-t" style={{ borderColor: 'var(--border-color)' }}>
+        {/* ── SCENARIO BAR ── */}
+        <div>
+          <div style={S.sectionLabel}>SCENARIO ANALYSIS</div>
+          <ScenarioBar worst={worstCumulative} current={projectedCumulativeGPA} best={bestCumulative} />
+        </div>
+
+        {/* ── TARGET GPA ── */}
+        <div style={{ ...S.card, padding: '16px 18px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
             <div>
-              <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>Cumulative GPA</label>
-              <input type="number" min="0" max="4" step="0.01" value={cumulativeGPA || ''}
-                onChange={e => setCumulativeGPA(parseFloat(e.target.value) || 0)}
-                className="input w-full px-3 py-2.5 text-sm" placeholder="0.00" />
+              <div style={{ fontSize: 11, fontWeight: 900, color: '#f1f5f9' }}>Target Cumulative GPA</div>
+              <div style={{ fontSize: 11, color: '#475569', marginTop: 2, fontWeight: 600 }}>Drag to set your goal</div>
             </div>
-            <div>
-              <label className="block text-xs font-semibold mb-1.5 uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>Total Credits</label>
-              <input type="number" min="0" step="1" value={cumulativeCredits || ''}
-                onChange={e => setCumulativeCredits(parseInt(e.target.value) || 0)}
-                className="input w-full px-3 py-2.5 text-sm" placeholder="0" />
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Courses */}
-      <div>
-        <h2 className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--text-muted)' }}>Courses This Semester</h2>
-        <div className="space-y-4">
-          {courses.map((course, i) => {
-            const projected = getProjectedGrade(course)
-            const minNeeded = getMinFinalScore(i)
-            return (
-              <div key={i} className="card p-4">
-                {/* Course name + remove */}
-                <div className="flex items-center justify-between mb-4">
-                  <input type="text" value={course.name} onChange={e => updateCourse(i, 'name', e.target.value)}
-                    className="font-bold text-base bg-transparent outline-none border-b border-transparent focus:border-accent-500 transition w-full mr-2"
-                    style={{ color: 'var(--text-primary)' }} placeholder="Course name" />
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ backgroundColor: 'var(--bg-input)', color: 'var(--text-muted)' }}>
-                      {course.credits} cr
-                    </span>
-                    {courses.length > 1 && (
-                      <button onClick={() => removeCourse(i)} className="w-7 h-7 rounded-lg flex items-center justify-center transition hover:bg-danger-500/10" style={{ color: 'var(--color-danger-400)' }}>
-                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <SliderRow label="Credits" value={course.credits} unit="" min={1} max={6} step={0.5}
-                    onChange={v => updateCourse(i, 'credits', parseFloat(v))} display={`${course.credits}`} />
-                  <SliderRow label="Current grade (before final)" value={course.currentGrade} unit="%" min={0} max={100} step={1}
-                    onChange={v => updateCourse(i, 'currentGrade', parseInt(v))}
-                    display={`${course.currentGrade}% (${percentToLetter(course.currentGrade)})`}
-                    displayColor={gradeColor(course.currentGrade)} />
-                  <SliderRow label="Final exam weight" value={course.finalWeight} unit="%" min={5} max={70} step={5}
-                    onChange={v => updateCourse(i, 'finalWeight', parseInt(v))}
-                    display={`${course.finalWeight}%`} />
-                  <SliderRow label="What if I score on the final..." value={course.finalScore} unit="%" min={0} max={100} step={1}
-                    onChange={v => updateCourse(i, 'finalScore', parseInt(v))}
-                    display={`${course.finalScore}%`}
-                    displayColor="var(--color-accent-400)" />
-                </div>
-
-                {/* Result bar */}
-                <div className="mt-4 pt-4 border-t grid grid-cols-2 gap-4" style={{ borderColor: 'var(--border-color)' }}>
-                  <div>
-                    <div className="text-[10px] uppercase tracking-wider font-semibold mb-1" style={{ color: 'var(--text-muted)' }}>Projected Final</div>
-                    <div className="text-2xl font-black" style={{ color: gradeColor(projected) }}>
-                      {projected.toFixed(1)}%
-                    </div>
-                    <div className="text-xs font-semibold mt-0.5" style={{ color: 'var(--text-muted)' }}>{percentToLetter(projected)}</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-[10px] uppercase tracking-wider font-semibold mb-1" style={{ color: 'var(--text-muted)' }}>
-                      Need for {targetGPA.toFixed(1)} GPA
-                    </div>
-                    {minNeeded !== null ? (
-                      <>
-                        <div className="text-2xl font-black" style={{ color: gradeColor(100 - minNeeded) }}>
-                          {minNeeded}%
-                        </div>
-                        <div className="text-xs font-semibold mt-0.5" style={{ color: 'var(--text-muted)' }}>on the final</div>
-                      </>
-                    ) : (
-                      <div className="text-sm font-bold mt-1" style={{ color: 'var(--color-danger-400)' }}>Not possible</div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Progress bar */}
-                <div className="mt-3">
-                  <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--bg-input)' }}>
-                    <div className="h-full rounded-full transition-all duration-500 progress-glow"
-                      style={{ width: `${projected}%`, background: `linear-gradient(90deg, ${gradeColor(projected)}, ${gradeColor(projected)}aa)` }} />
-                  </div>
-                </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: 28, fontWeight: 900, color: '#3b82f6', letterSpacing: '-0.03em', lineHeight: 1 }}>
+                {targetGPA.toFixed(1)}
               </div>
-            )
-          })}
+              <div style={{ fontSize: 11, color: '#475569', marginTop: 2, fontWeight: 700 }}>{gpaToLetter(targetGPA)}</div>
+            </div>
+          </div>
+          <input type="range" min="0" max="4" step="0.1" value={targetGPA}
+            onChange={e => setTargetGPA(parseFloat(e.target.value))}
+            style={{ width: '100%', accentColor: '#3b82f6' }} />
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
+            {['0.0', '1.0', '2.0', '3.0', '4.0'].map(v => (
+              <span key={v} style={{ fontSize: 9, fontWeight: 700, color: '#334155' }}>{v}</span>
+            ))}
+          </div>
         </div>
-      </div>
 
-      {/* Add course */}
-      <button onClick={addCourse}
-        className="w-full py-3.5 rounded-2xl border-2 border-dashed text-sm font-semibold transition-all duration-200 hover:border-accent-500 hover:text-accent-400"
-        style={{ borderColor: 'var(--border-color)', color: 'var(--text-muted)' }}>
-        + Add Course
-      </button>
-    </div>
-  )
-}
-
-function GPACard({ label, gpa }) {
-  const color = gpaColor(gpa)
-  const pct = (gpa / 4) * 100
-  const r = 28
-  const circ = 2 * Math.PI * r
-
-  return (
-    <div className="card p-4 flex items-center gap-3">
-      <div className="relative w-16 h-16 shrink-0">
-        <svg className="w-16 h-16 -rotate-90" viewBox="0 0 64 64">
-          <circle cx="32" cy="32" r={r} fill="none" stroke="var(--bg-input)" strokeWidth="5" />
-          <circle cx="32" cy="32" r={r} fill="none" stroke={color} strokeWidth="5"
-            strokeLinecap="round"
-            strokeDasharray={circ}
-            strokeDashoffset={circ - (pct / 100) * circ}
-            style={{ transition: 'stroke-dashoffset 0.8s ease, stroke 0.5s ease', filter: `drop-shadow(0 0 4px ${color})` }} />
-        </svg>
-        <div className="absolute inset-0 flex items-center justify-center">
-          <span className="text-base font-black" style={{ color }}>{gpa.toFixed(1)}</span>
+        {/* ── PREVIOUS SEMESTERS ── */}
+        <div style={S.card}>
+          <button
+            onClick={() => setShowPrevious(v => !v)}
+            style={{
+              width: '100%', padding: '14px 18px', display: 'flex', alignItems: 'center',
+              justifyContent: 'space-between', background: 'none', border: 'none',
+              cursor: 'pointer', textAlign: 'left',
+            }}>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 900, color: '#f1f5f9' }}>Previous Semesters</div>
+              <div style={{ fontSize: 11, color: '#475569', marginTop: 2, fontWeight: 600 }}>
+                {cumulativeCredits > 0
+                  ? `${cumulativeCredits} credits · ${cumulativeGPA.toFixed(2)} GPA`
+                  : 'Optional — for cumulative GPA calculation'}
+              </div>
+            </div>
+            <motion.div animate={{ rotate: showPrevious ? 180 : 0 }} transition={{ duration: 0.2 }}>
+              <svg width={16} height={16} fill="none" viewBox="0 0 24 24" stroke="#475569" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
+            </motion.div>
+          </button>
+          <AnimatePresence>
+            {showPrevious && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.25 }}
+                style={{ overflow: 'hidden' }}>
+                <div style={{ borderTop: '1px solid #1e2530', padding: '14px 18px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 9, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.15em', color: '#475569', marginBottom: 6 }}>
+                        Cumulative GPA
+                      </label>
+                      <input type="number" min="0" max="4" step="0.01" value={cumulativeGPA || ''}
+                        onChange={e => setCumulativeGPA(parseFloat(e.target.value) || 0)}
+                        style={S.input} placeholder="0.00" />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 9, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.15em', color: '#475569', marginBottom: 6 }}>
+                        Total Credits
+                      </label>
+                      <input type="number" min="0" step="1" value={cumulativeCredits || ''}
+                        onChange={e => setCumulativeCredits(parseInt(e.target.value) || 0)}
+                        style={S.input} placeholder="0" />
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
-      </div>
-      <div>
-        <div className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>{label}</div>
-        <div className="text-lg font-extrabold" style={{ color: 'var(--text-primary)' }}>{gpaToLetter(gpa)}</div>
-      </div>
-    </div>
-  )
-}
 
-function SliderRow({ label, value, min, max, step, onChange, display, displayColor }) {
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-1.5">
-        <span className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>{label}</span>
-        <span className="text-xs font-bold" style={{ color: displayColor || 'var(--text-secondary)' }}>{display}</span>
+        {/* ── COURSES TABLE ── */}
+        <div>
+          <div style={S.sectionLabel}>COURSES THIS SEMESTER</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {courses.map((course, i) => (
+              <CourseRow
+                key={i}
+                course={course}
+                index={i}
+                onUpdate={updateCourse}
+                onRemove={removeCourse}
+                targetGPA={targetGPA}
+                cumulativeGPA={cumulativeGPA}
+                cumulativeCredits={cumulativeCredits}
+                allCourses={courses}
+                getProjectedGrade={getProjectedGrade}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* ── ADD COURSE ── */}
+        <motion.button
+          whileHover={{ borderColor: '#3b82f6', scale: 1.01 }}
+          whileTap={{ scale: 0.99 }}
+          onClick={addCourse}
+          style={{
+            width: '100%', padding: '14px', borderRadius: 14,
+            border: '2px dashed #1e2530', background: 'none',
+            color: '#475569', fontSize: 13, fontWeight: 900,
+            cursor: 'pointer', transition: 'all 0.2s',
+          }}>
+          + Add Course
+        </motion.button>
+
+        {/* ── GRADE SCALE REFERENCE ── */}
+        <GradeScaleRef />
+
+        {/* ── SUMMARY FOOTER ── */}
+        <div style={{ ...S.card, padding: '16px 18px', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 0 }}>
+          {[
+            { label: 'Semester GPA', value: semesterGPA.toFixed(2), color: gpaColor(semesterGPA) },
+            { label: 'Total Credits', value: courses.reduce((s, c) => s + c.credits, 0).toString(), color: '#3b82f6' },
+            { label: 'Cumulative', value: projectedCumulativeGPA.toFixed(2), color: gpaColor(projectedCumulativeGPA) },
+          ].map((item, i) => (
+            <div key={i} style={{
+              textAlign: 'center', padding: '0 8px',
+              borderRight: i < 2 ? '1px solid #1e2530' : 'none',
+            }}>
+              <div style={{ fontSize: 9, fontWeight: 900, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 4 }}>
+                {item.label}
+              </div>
+              <div style={{ fontSize: 20, fontWeight: 900, color: item.color, letterSpacing: '-0.03em' }}>
+                {item.value}
+              </div>
+            </div>
+          ))}
+        </div>
+
       </div>
-      <input type="range" min={min} max={max} step={step} value={value} onChange={e => onChange(e.target.value)} />
-    </div>
+    </motion.div>
   )
 }

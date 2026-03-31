@@ -5,9 +5,12 @@ import Landing from './pages/Landing'
 import Login from './pages/Login'
 import Signup from './pages/Signup'
 import Dashboard from './pages/Dashboard'
+import Courses from './pages/Courses'
+import CourseDetail from './pages/CourseDetail'
 import ClutchMode from './pages/ClutchMode'
 import GPASimulator from './pages/GPASimulator'
 import Deadlines from './pages/Deadlines'
+import Social from './pages/Social'
 import NotFound from './pages/NotFound'
 
 function ProtectedRoute({ children }) {
@@ -28,14 +31,18 @@ export default function App() {
 
   return (
     <Routes>
-      <Route path="/" element={user ? <Navigate to="/dashboard" replace /> : <Landing />} />
-      <Route path="/login" element={user ? <Navigate to="/dashboard" replace /> : <Login />} />
-      <Route path="/signup" element={user ? <Navigate to="/dashboard" replace /> : <Signup />} />
+      <Route path="/" element={user ? <Navigate to="/courses" replace /> : <Landing />} />
+      <Route path="/landing" element={<Landing />} />
+      <Route path="/login" element={user ? <Navigate to="/courses" replace /> : <Login />} />
+      <Route path="/signup" element={user ? <Navigate to="/courses" replace /> : <Signup />} />
       <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
         <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/courses" element={<Courses />} />
+        <Route path="/courses/:id" element={<CourseDetail />} />
         <Route path="/clutch" element={<ClutchMode />} />
         <Route path="/gpa" element={<GPASimulator />} />
         <Route path="/deadlines" element={<Deadlines />} />
+        <Route path="/social" element={<Social />} />
       </Route>
       <Route path="*" element={<NotFound />} />
     </Routes>
