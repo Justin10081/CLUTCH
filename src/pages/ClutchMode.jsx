@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useCourses } from '../context/CoursesContext'
 import { useSessions } from '../context/SessionsContext'
+import { getAuthToken } from '../lib/supabase'
 import * as pdfjsLib from 'pdfjs-dist'
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 
@@ -344,11 +345,9 @@ export default function ClutchMode() {
     const fileContext = files.map(f => `--- FILE: ${f.name} ---\n${f.content}`).join('\n\n')
 
     let data = null
-    const apiKey = import.meta.env.VITE_GROQ_API_KEY
-    if (apiKey) {
-      try {
-        setLoadingStep(1)
-        const prompt = `You are an expert university tutor. Create a comprehensive exam study guide for: "${effectiveTopic}"
+    try {
+      setLoadingStep(1)
+      const prompt = `You are an expert university tutor. Create a comprehensive exam study guide for: "${effectiveTopic}"
 ${courseCtx ? `Course: ${courseCtx.name} (${courseCtx.code || ''})` : ''}
 Exam type: ${examType || 'mixed'}
 Level: ${courseLevel || 'undergraduate'}
@@ -387,26 +386,35 @@ Rules:
 - flashcards: 8-12 term/definition pairs
 - Be specific to the actual topic and materials provided`
 
-        const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-          body: JSON.stringify({
-            model: 'llama-3.3-70b-versatile',
-            messages: [{ role: 'user', content: prompt }],
-            response_format: { type: 'json_object' },
-            temperature: 0.3,
-            max_tokens: 4096,
-          }),
-        })
-        setLoadingStep(2)
-        if (res.ok) {
-          const json = await res.json()
-          data = JSON.parse(json.choices[0].message.content)
-          setLoadingStep(3)
-        }
-      } catch (e) {
-        console.warn('Groq generate error, using fallback:', e)
+      const token = await getAuthToken()
+      const res = await fetch('/api/groq', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          model: 'llama-3.3-70b-versatile',
+          messages: [{ role: 'user', content: prompt }],
+          response_format: { type: 'json_object' },
+          temperature: 0.3,
+          max_tokens: 4096,
+        }),
+      })
+      setLoadingStep(2)
+      if (res.status === 429) {
+        const { error } = await res.json().catch(() => ({}))
+        setStep('input')
+        alert(error || 'Daily AI limit reached (30/day). Resets at midnight.')
+        return
       }
+      if (res.ok) {
+        const json = await res.json()
+        data = JSON.parse(json.choices[0].message.content)
+        setLoadingStep(3)
+      }
+    } catch (e) {
+      console.warn('Groq generate error, using fallback:', e)
     }
 
     if (!data) {

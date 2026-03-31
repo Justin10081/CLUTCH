@@ -1,8 +1,9 @@
 /**
  * syllabusParser.js
- * Client-side syllabus extraction + Groq AI structuring.
- * Works without API key using regex fallback.
+ * Syllabus extraction + AI structuring via secure /api/groq proxy.
+ * Falls back to regex extraction if AI unavailable.
  */
+import { getAuthToken } from '../lib/supabase'
 
 // ── Text extraction ────────────────────────────────────────────────────────────
 export async function extractTextFromFile(file) {
@@ -35,7 +36,7 @@ export async function extractTextFromFile(file) {
 }
 
 // ── Groq AI parser ─────────────────────────────────────────────────────────────
-const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions'
+const GROQ_URL = '/api/groq'
 
 const PROMPT = (text, courseName, courseCode) => `
 You are an expert university syllabus parser. Extract EVERY piece of information from this syllabus and return a complete, structured JSON object.
@@ -118,24 +119,15 @@ Rules:
 `
 
 export async function parseSyllabus(text, courseName, courseCode, onStep) {
-  const apiKey = import.meta.env.VITE_GROQ_API_KEY
-
   onStep?.('Reading course structure...')
 
-  if (!apiKey) {
-    // Simulate some processing time for UX
-    await new Promise(r => setTimeout(r, 800))
-    onStep?.('Organizing data (no AI key — using smart extraction)...')
-    await new Promise(r => setTimeout(r, 600))
-    return parseSyllabusFallback(text, courseName, courseCode)
-  }
-
   try {
+    const token = await getAuthToken()
     const res = await fetch(GROQ_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: JSON.stringify({
         model: 'llama-3.3-70b-versatile',
@@ -145,6 +137,11 @@ export async function parseSyllabus(text, courseName, courseCode, onStep) {
         max_tokens: 4096,
       }),
     })
+
+    if (res.status === 429) {
+      const { error } = await res.json().catch(() => ({}))
+      throw new Error(error || 'Daily AI limit reached. Try again tomorrow.')
+    }
 
     if (!res.ok) {
       const err = await res.text()

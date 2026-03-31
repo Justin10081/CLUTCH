@@ -1,10 +1,26 @@
+import { createClient } from '@supabase/supabase-js'
+
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*')
+  const allowed = process.env.ALLOWED_ORIGIN || 'https://clutch-app-chi.vercel.app'
+  res.setHeader('Access-Control-Allow-Origin', allowed)
+  res.setHeader('Vary', 'Origin')
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
 
   if (req.method === 'OPTIONS') return res.status(200).end()
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
+
+  // Auth check
+  const token = (req.headers.authorization || '').replace('Bearer ', '').trim()
+  if (!token) return res.status(401).json({ error: 'Authentication required' })
+
+  const supabase = createClient(
+    process.env.SUPABASE_URL,
+    process.env.SUPABASE_ANON_KEY,
+    { global: { headers: { Authorization: `Bearer ${token}` } }, auth: { persistSession: false } }
+  )
+  const { data: { user }, error: authErr } = await supabase.auth.getUser()
+  if (authErr || !user) return res.status(401).json({ error: 'Invalid or expired session' })
 
   const apiKey = process.env.GROQ_API_KEY
   if (!apiKey) return res.status(503).json({ error: 'AI not configured' })
