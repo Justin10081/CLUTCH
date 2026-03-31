@@ -17,12 +17,12 @@ function fromDB(row) {
     course: row.course_name || '',
     courseId: row.course_id || '',
     courseColor: row.course_color || '#3b82f6',
-    date: row.due_date ? row.due_date.slice(0, 16) : '',
+    date: row.due_date ? row.due_date.slice(0, 10) : '',
     weight: row.weight ?? 5,
     difficulty: row.difficulty ?? 5,
     type: row.type || 'assignment',
     completed: row.completed || false,
-    fromSyllabus: false,
+    fromSyllabus: row.from_syllabus || false,
   }
 }
 
@@ -40,6 +40,7 @@ function toDB(d, userId) {
     difficulty: d.difficulty ?? 5,
     type: d.type || 'assignment',
     completed: d.completed || false,
+    from_syllabus: d.fromSyllabus || false,
   }
 }
 
@@ -68,13 +69,32 @@ export function DeadlinesProvider({ children }) {
       .eq('user_id', user.id)
       .order('due_date', { ascending: true })
       .then(({ data, error }) => {
-        if (!error && data) {
-          const mapped = data.map(fromDB)
-          setDeadlinesState(mapped)
-          setTimeout(() => {
-            try { localStorage.setItem(LS_KEY, JSON.stringify(mapped)) } catch (_) {}
-          }, 0)
+        if (error) {
+          console.error('Supabase deadlines load error:', error)
+          return // Keep localStorage state on DB error
         }
+        if (!data) return
+
+        // Recovery: if Supabase empty but localStorage has data, sync up
+        if (data.length === 0) {
+          const localDeadlines = load()
+          if (localDeadlines.length > 0) {
+            console.log(`Recovering ${localDeadlines.length} deadline(s) from localStorage to Supabase`)
+            supabase
+              .from('deadlines')
+              .upsert(localDeadlines.map(d => toDB(d, user.id)), { onConflict: 'id' })
+              .then(({ error: e }) => { if (e) console.error('Deadline recovery sync error:', e) })
+            return // State already has local deadlines from init
+          }
+          setDeadlinesState([])
+          return
+        }
+
+        const mapped = data.map(fromDB)
+        setDeadlinesState(mapped)
+        setTimeout(() => {
+          try { localStorage.setItem(LS_KEY, JSON.stringify(mapped)) } catch (_) {}
+        }, 0)
       })
   }, [user?.id])
 

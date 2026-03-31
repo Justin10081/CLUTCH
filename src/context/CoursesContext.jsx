@@ -90,7 +90,32 @@ export function CoursesProvider({ children }) {
       .eq('user_id', user.id)
       .order('created_at', { ascending: true })
       .then(async ({ data: coursesData, error }) => {
-        if (error || !coursesData) return
+        if (error) {
+          console.error('Supabase courses load error:', error)
+          return // Keep localStorage state on DB error
+        }
+        if (!coursesData) return
+
+        // ── Recovery sync ────────────────────────────────────────────────────
+        // If Supabase has no courses but localStorage does, the previous
+        // INSERT must have failed. Recover by upserting all local courses now.
+        if (coursesData.length === 0) {
+          const localCourses = load()
+          if (localCourses.length > 0) {
+            console.log(`Recovering ${localCourses.length} course(s) from localStorage to Supabase`)
+            await Promise.all(
+              localCourses.map(c =>
+                supabase.from('courses').upsert(toDBFull(c, user.id), { onConflict: 'id' })
+              )
+            )
+            // State is already correct (loaded from localStorage at init)
+            return
+          }
+          // Both Supabase and localStorage are empty — genuinely no courses
+          setCourses([])
+          return
+        }
+        // ────────────────────────────────────────────────────────────────────
 
         const courseIds = coursesData.map(c => c.id)
         let materialsMap = {}

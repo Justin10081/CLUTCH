@@ -369,7 +369,7 @@ Return ONLY valid JSON with this exact structure:
     { "myth": "string", "reality": "string" }
   ],
   "studyPlan": [
-    { "phase": "string", "duration": "string", "action": "string", "goal": "string" }
+    { "title": "string", "minutes": 15, "description": "string" }
   ],
   "flashcards": [
     { "front": "string", "back": "string" }
@@ -382,7 +382,7 @@ Rules:
 - formulas: include ONLY if subject has math/science formulas, otherwise []
 - likelyQuestions: 5-7 likely exam questions with full answers
 - misconceptions: 3-5 common student mistakes
-- studyPlan: 4-5 timed phases for a focused study session
+- studyPlan: 4-5 timed phases, each with title (string), minutes (number), description (string)
 - flashcards: 8-12 term/definition pairs
 - Be specific to the actual topic and materials provided`
 
