@@ -35,7 +35,7 @@ function loadLocal() {
 }
 
 export function GPAProvider({ children }) {
-  const { user } = useAuth()
+  const { user, loading } = useAuth()
   const local = loadLocal()
   const [courses, setCoursesState] = useState(local.courses)
   const [cumulativeGPA, setCumulativeGPAState] = useState(local.cumulativeGPA)
@@ -53,9 +53,9 @@ export function GPAProvider({ children }) {
   useEffect(() => { cumulativeCreditsRef.current = cumulativeCredits }, [cumulativeCredits])
   useEffect(() => { userRef.current = user }, [user])
 
-  // Clear all data when user logs out
+  // Clear all data when user logs out — but NOT during initial auth load
   useEffect(() => {
-    if (!user) {
+    if (!loading && !user) {
       setCoursesState([{ ...EMPTY_COURSE, name: 'Course 1' }])
       setCumulativeGPAState(0)
       setCumulativeCreditsState(0)
@@ -65,7 +65,7 @@ export function GPAProvider({ children }) {
         localStorage.removeItem('clutch-cumulative-credits')
       } catch (_) {}
     }
-  }, [user])
+  }, [user, loading])
 
   // Load from Supabase on auth
   useEffect(() => {

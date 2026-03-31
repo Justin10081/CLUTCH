@@ -24,16 +24,16 @@ function fromDB(row) {
 }
 
 export function SessionsProvider({ children }) {
-  const { user } = useAuth()
+  const { user, loading } = useAuth()
   const [sessions, setSessions] = useState(loadLocal)
   const [sessionCount, setSessionCount] = useState(loadCountLocal)
   const userRef = useRef(user)
 
   useEffect(() => { userRef.current = user }, [user])
 
-  // Clear all data when user logs out
+  // Clear all data when user logs out — but NOT during initial auth load
   useEffect(() => {
-    if (!user) {
+    if (!loading && !user) {
       setSessions([])
       setSessionCount(0)
       try {
@@ -41,7 +41,7 @@ export function SessionsProvider({ children }) {
         localStorage.removeItem('clutch-session-count')
       } catch (_) {}
     }
-  }, [user])
+  }, [user, loading])
 
   // Load from Supabase on auth
   useEffect(() => {

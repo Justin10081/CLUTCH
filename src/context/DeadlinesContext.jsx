@@ -45,20 +45,21 @@ function toDB(d, userId) {
 }
 
 export function DeadlinesProvider({ children }) {
-  const { user } = useAuth()
+  const { user, loading } = useAuth()
   const [deadlines, setDeadlinesState] = useState(load)
   const syncRef = useRef(null)
   const userRef = useRef(user)
 
   useEffect(() => { userRef.current = user }, [user])
 
-  // Clear all data when user logs out
+  // Clear all data when user logs out — but NOT during initial auth load
+  // (user is null while Supabase is restoring the session, so we must wait)
   useEffect(() => {
-    if (!user) {
+    if (!loading && !user) {
       setDeadlinesState([])
       try { localStorage.removeItem(LS_KEY) } catch (_) {}
     }
-  }, [user])
+  }, [user, loading])
 
   // Load from Supabase on auth
   useEffect(() => {

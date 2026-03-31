@@ -77,19 +77,20 @@ function materialFromDB(row) {
 }
 
 export function CoursesProvider({ children }) {
-  const { user } = useAuth()
+  const { user, loading } = useAuth()
   const [courses, setCourses] = useState(load)
   const userRef = useRef(user)
 
   useEffect(() => { userRef.current = user }, [user])
 
-  // Clear all data when user logs out
+  // Clear all data when user logs out — but NOT during initial auth load
+  // (user is null while Supabase is restoring the session, so we must wait)
   useEffect(() => {
-    if (!user) {
+    if (!loading && !user) {
       setCourses([])
       try { localStorage.removeItem(LS_KEY) } catch (_) {}
     }
-  }, [user])
+  }, [user, loading])
 
   // Load from Supabase on auth
   useEffect(() => {
