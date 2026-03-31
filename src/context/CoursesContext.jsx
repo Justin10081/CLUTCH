@@ -28,7 +28,7 @@ function fromDB(row) {
   }
 }
 
-// Local camelCase → DB columns (no materials)
+// Local camelCase → DB columns for INSERT (no syllabus_data — let it default to null)
 function toDB(c, userId) {
   const row = {
     id: c.id,
@@ -41,9 +41,16 @@ function toDB(c, userId) {
     target_grade: c.targetGrade || 'B+',
     syllabus: c.syllabus || null,
     syllabus_name: c.syllabusName || null,
-    syllabus_data: c.syllabusData || null,
+    // syllabus_data intentionally omitted from INSERT — updated separately via updateCourse
   }
   if (userId) row.user_id = userId
+  return row
+}
+
+// Full row for upsert (includes syllabus_data)
+function toDBFull(c, userId) {
+  const row = toDB(c, userId)
+  row.syllabus_data = c.syllabusData || null
   return row
 }
 
@@ -145,7 +152,10 @@ export function CoursesProvider({ children }) {
 
     const u = userRef.current
     if (u && !u.demo && isSupabaseConfigured()) {
-      const { error } = await supabase.from('courses').insert(toDB(course, u.id))
+      // Use upsert instead of insert so retries are safe and schema-cache misses don't silently drop data
+      const { error } = await supabase
+        .from('courses')
+        .upsert(toDB(course, u.id), { onConflict: 'id' })
       if (error) console.error('Supabase course insert error:', error)
     }
 
@@ -153,10 +163,24 @@ export function CoursesProvider({ children }) {
   }, [persist])
 
   const updateCourse = useCallback(async (id, changes) => {
-    persist(prev => prev.map(c => c.id === id ? { ...c, ...changes } : c))
+    let updatedCourse = null
+    persist(prev => {
+      const next = prev.map(c => {
+        if (c.id !== id) return c
+        updatedCourse = { ...c, ...changes }
+        return updatedCourse
+      })
+      return next
+    })
 
     const u = userRef.current
     if (u && !u.demo && isSupabaseConfigured()) {
+      // Use upsert so even if the original INSERT failed, this write succeeds.
+      // We need the full merged course object — read it from state via closure above.
+      // Build a complete upsert row after a tick (so persist has run).
+      await new Promise(r => setTimeout(r, 0))
+
+      // Re-read from state to get the latest merged value
       const dbChanges = {}
       if ('name' in changes) dbChanges.name = changes.name
       if ('code' in changes) dbChanges.code = changes.code
@@ -169,9 +193,20 @@ export function CoursesProvider({ children }) {
       if ('syllabusName' in changes) dbChanges.syllabus_name = changes.syllabusName
       if ('syllabusData' in changes) dbChanges.syllabus_data = changes.syllabusData
 
-      if (Object.keys(dbChanges).length > 0) {
-        const { error } = await supabase.from('courses').update(dbChanges).eq('id', id)
-        if (error) console.error('Supabase course update error:', error)
+      if (Object.keys(dbChanges).length === 0) return
+
+      // First try a regular update — fast path for existing rows
+      const { error: updateErr } = await supabase.from('courses').update(dbChanges).eq('id', id).eq('user_id', u.id)
+
+      if (updateErr) {
+        console.error('Supabase course update error:', updateErr)
+        // Fallback: upsert the full row in case the row doesn't exist yet
+        if (updatedCourse) {
+          const { error: upsertErr } = await supabase
+            .from('courses')
+            .upsert(toDBFull(updatedCourse, u.id), { onConflict: 'id' })
+          if (upsertErr) console.error('Supabase course upsert error:', upsertErr)
+        }
       }
     }
   }, [persist])

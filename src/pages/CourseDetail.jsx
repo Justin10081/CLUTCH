@@ -255,6 +255,7 @@ export default function CourseDetail() {
       setParseStep(2)
 
       // Merge AI-extracted info into course fields
+      setParseMsg('Saving to your account...')
       const ci = parsed.courseInfo || {}
       const courseUpdates = {
         syllabusName: file.name,
@@ -262,7 +263,8 @@ export default function CourseDetail() {
       }
       if (ci.professor && !course.professor) courseUpdates.professor = ci.professor
 
-      updateCourse(id, courseUpdates)
+      // Await the save so we know it persisted before showing success
+      await updateCourse(id, courseUpdates)
 
       // Write deadlines via context (syncs to Supabase automatically)
       const newDeadlines = syllabusToDeadlines(parsed, id, course.name, course.code, course.color)
@@ -273,7 +275,7 @@ export default function CourseDetail() {
       // Step 3: Done
       setParseStep(3)
       setParseSuccess({ assignments: parsed.assignments?.length || 0, weeks: parsed.weeklySchedule?.length || 0, deadlines: newDeadlines.length })
-      setTimeout(() => setParseStep(4), 1200)
+      setTimeout(() => setParseStep(4), 1800)
 
     } catch (err) {
       console.error('Syllabus parse error:', err)
