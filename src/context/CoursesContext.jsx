@@ -47,10 +47,21 @@ function toDB(c, userId) {
   return row
 }
 
+// Remove non-BMP Unicode characters (emoji etc.) that PostgreSQL's JSONB parser
+// rejects when JavaScript encodes them as surrogate pairs (e.g. \uD83D\uDD25)
+function sanitizeForDB(val) {
+  if (typeof val === 'string') return val.replace(/[\u{10000}-\u{10FFFF}]/gu, '')
+  if (Array.isArray(val)) return val.map(sanitizeForDB)
+  if (val !== null && typeof val === 'object') {
+    return Object.fromEntries(Object.entries(val).map(([k, v]) => [k, sanitizeForDB(v)]))
+  }
+  return val
+}
+
 // Full row for upsert (includes syllabus_data)
 function toDBFull(c, userId) {
   const row = toDB(c, userId)
-  row.syllabus_data = c.syllabusData || null
+  row.syllabus_data = c.syllabusData ? sanitizeForDB(c.syllabusData) : null
   return row
 }
 
@@ -103,11 +114,22 @@ export function CoursesProvider({ children }) {
           const localCourses = load()
           if (localCourses.length > 0) {
             console.log(`Recovering ${localCourses.length} course(s) from localStorage to Supabase`)
-            await Promise.all(
-              localCourses.map(c =>
-                supabase.from('courses').upsert(toDBFull(c, user.id), { onConflict: 'id' })
-              )
-            )
+            await Promise.all(localCourses.map(async c => {
+              // Step 1: upsert core course data (no syllabus_data — avoids Unicode surrogate pair issues)
+              const { error: e1 } = await supabase
+                .from('courses')
+                .upsert(toDB(c, user.id), { onConflict: 'id' })
+              if (e1) { console.error('Recovery core upsert error:', e1); return }
+              // Step 2: update syllabus_data separately with sanitized data
+              if (c.syllabusData) {
+                const { error: e2 } = await supabase
+                  .from('courses')
+                  .update({ syllabus_data: sanitizeForDB(c.syllabusData), syllabus_name: c.syllabusName || null })
+                  .eq('id', c.id)
+                  .eq('user_id', user.id)
+                if (e2) console.error('Recovery syllabus update error:', e2)
+              }
+            }))
             // State is already correct (loaded from localStorage at init)
             return
           }
@@ -216,7 +238,7 @@ export function CoursesProvider({ children }) {
       if ('targetGrade' in changes) dbChanges.target_grade = changes.targetGrade
       if ('syllabus' in changes) dbChanges.syllabus = changes.syllabus
       if ('syllabusName' in changes) dbChanges.syllabus_name = changes.syllabusName
-      if ('syllabusData' in changes) dbChanges.syllabus_data = changes.syllabusData
+      if ('syllabusData' in changes) dbChanges.syllabus_data = changes.syllabusData ? sanitizeForDB(changes.syllabusData) : null
 
       if (Object.keys(dbChanges).length === 0) return
 
