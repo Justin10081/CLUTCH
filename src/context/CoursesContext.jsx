@@ -48,10 +48,12 @@ function toDB(c, userId) {
   return row
 }
 
-// Remove non-BMP Unicode characters (emoji etc.) that PostgreSQL's JSONB parser
-// rejects when JavaScript encodes them as surrogate pairs (e.g. \uD83D\uDD25)
+// Remove characters that PostgreSQL rejects: non-BMP (emoji etc.), lone surrogates, null bytes
 function sanitizeForDB(val) {
-  if (typeof val === 'string') return val.replace(/[\u{10000}-\u{10FFFF}]/gu, '')
+  if (typeof val === 'string') return val
+    .replace(/[\u{10000}-\u{10FFFF}]/gu, '') // non-BMP emoji (surrogate-pair encoded)
+    .replace(/[\uD800-\uDFFF]/g, '')          // lone BMP surrogates
+    .replace(/\u0000/g, '')                   // null bytes
   if (Array.isArray(val)) return val.map(sanitizeForDB)
   if (val !== null && typeof val === 'object') {
     return Object.fromEntries(Object.entries(val).map(([k, v]) => [k, sanitizeForDB(v)]))
@@ -201,11 +203,19 @@ export function CoursesProvider({ children }) {
 
     const u = userRef.current
     if (u && !u.demo && isSupabaseConfigured()) {
-      // Use upsert instead of insert so retries are safe and schema-cache misses don't silently drop data
       const { error } = await supabase
         .from('courses')
-        .upsert(toDB(course, u.id), { onConflict: 'id' })
-      if (error) console.error('Supabase course insert error:', error)
+        .insert(toDB(course, u.id))
+      if (error) {
+        console.error('Supabase course insert error:', error.message, error.details, error.hint)
+        // Fallback: try upsert in case the row somehow already exists
+        if (error.code === '23505') {
+          const { error: e2 } = await supabase
+            .from('courses')
+            .upsert(toDB(course, u.id), { onConflict: 'id' })
+          if (e2) console.error('Supabase course upsert fallback error:', e2.message, e2.details)
+        }
+      }
     }
 
     return course

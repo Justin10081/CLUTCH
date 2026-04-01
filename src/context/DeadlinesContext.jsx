@@ -26,9 +26,11 @@ function fromDB(row) {
   }
 }
 
-// Strip non-BMP Unicode (emoji etc.) that PostgreSQL's JSON parser rejects as surrogate pairs
+// Strip characters PostgreSQL rejects: non-BMP emoji, lone surrogates, null bytes
 function sanitize(s) {
-  return typeof s === 'string' ? s.replace(/[\u{10000}-\u{10FFFF}]/gu, '') : s
+  return typeof s === 'string'
+    ? s.replace(/[\u{10000}-\u{10FFFF}]/gu, '').replace(/[\uD800-\uDFFF]/g, '').replace(/\u0000/g, '')
+    : s
 }
 
 // Local camelCase → DB row
