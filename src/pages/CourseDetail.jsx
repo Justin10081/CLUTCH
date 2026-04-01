@@ -7,7 +7,7 @@ import { extractTextFromFile, parseSyllabus, syllabusToDeadlines } from '../util
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 const ease = [0.16, 1, 0.3, 1]
-const TABS = ['Overview', 'Timeline', 'Assignments', 'Materials', 'Clutch']
+const TABS = ['Overview', 'Timeline', 'Assignments', 'Deadlines', 'Materials', 'Clutch']
 
 const TYPE_META = {
   homework:      { label: 'HW',     color: '#3b82f6', bg: 'rgba(59,130,246,0.12)',  emoji: '📝' },
@@ -179,7 +179,7 @@ export default function CourseDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { courses, updateCourse, addMaterial, removeMaterial } = useCourses()
-  const { deadlines: allDeadlines, replaceCourseSyllabusDeadlines } = useDeadlines()
+  const { deadlines: allDeadlines, addDeadline, setDeadlines, replaceCourseSyllabusDeadlines } = useDeadlines()
   const course = courses.find(c => c.id === id)
 
   const [activeTab, setActiveTab] = useState(0)
@@ -189,6 +189,10 @@ export default function CourseDetail() {
   const [parseStep, setParseStep] = useState(-1) // -1=idle, 0-3=steps, 4=done, 5=error
   const [parseMsg, setParseMsg] = useState('')
   const [parseSuccess, setParseSuccess] = useState(null)
+  const [dlEditId, setDlEditId] = useState(null)
+  const [dlForm, setDlForm] = useState({ title: '', date: '', type: 'homework', weight: 5, difficulty: 5 })
+  const [dlShowAdd, setDlShowAdd] = useState(false)
+  const [dlDeleteId, setDlDeleteId] = useState(null)
 
   const fileInputRef = useRef()
   const syllabusRef = useRef()
@@ -210,12 +214,39 @@ export default function CourseDetail() {
     .filter(d => d.courseId === id && !d.completed)
     .sort((a, b) => new Date(a.date) - new Date(b.date))
 
+  const allCourseDeadlines = allDeadlines
+    .filter(d => d.courseId === id)
+    .sort((a, b) => {
+      if (a.completed !== b.completed) return a.completed ? 1 : -1
+      if (!a.date || !b.date) return !a.date ? 1 : -1
+      return new Date(a.date) - new Date(b.date)
+    })
+
   // Bar colors for grading breakdown
   const gradeColors = ['#3b82f6', '#8b5cf6', '#ef4444', '#f59e0b', '#10b981', '#06b6d4', '#ec4899', '#f97316']
 
   // ── Editable fields
   const startEdit = (field) => { setEditingField(field); setEditValue(course[field] || '') }
   const saveEdit = () => { if (editingField) { updateCourse(id, { [editingField]: editValue }); setEditingField(null) } }
+
+  const toggleDlComplete = (dlId) => setDeadlines(prev => prev.map(d => d.id === dlId ? { ...d, completed: !d.completed } : d))
+  const deleteDl = (dlId) => { setDeadlines(prev => prev.filter(d => d.id !== dlId)); setDlDeleteId(null) }
+  const startEditDl = (dl) => {
+    setDlEditId(dl.id)
+    setDlForm({ title: dl.title, date: dl.date || '', type: dl.type || 'homework', weight: dl.weight ?? 5, difficulty: dl.difficulty ?? 5 })
+    setDlShowAdd(true)
+  }
+  const saveDl = () => {
+    if (!dlForm.title || !dlForm.date) return
+    if (dlEditId) {
+      setDeadlines(prev => prev.map(d => d.id === dlEditId ? { ...d, ...dlForm } : d))
+    } else {
+      addDeadline({ ...dlForm, courseId: id, course: course.name, courseColor: course.color, completed: false, fromSyllabus: false })
+    }
+    setDlEditId(null)
+    setDlShowAdd(false)
+    setDlForm({ title: '', date: '', type: 'homework', weight: 5, difficulty: 5 })
+  }
 
   // ── File uploads
   const handleMaterialUpload = (files) => {
@@ -645,8 +676,132 @@ export default function CourseDetail() {
             </motion.div>
           )}
 
-          {/* ════════════════ MATERIALS ════════════════ */}
+
+          {/* ════════════════ DEADLINES ════════════════ */}
           {activeTab === 3 && (
+            <motion.div key="deadlines" variants={stagger} initial="initial" animate="animate" exit="exit" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <style>{`
+                .dl-row:hover { background: rgba(255,255,255,0.04) !important; }
+                .dl-row:hover .dl-actions { opacity: 1 !important; }
+              `}</style>
+
+              {/* Header */}
+              <motion.div variants={fadeUp} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.28em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.22)' }}>
+                  {allCourseDeadlines.filter(d => !d.completed).length} active · {allCourseDeadlines.filter(d => d.completed).length} done
+                </div>
+                <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+                  onClick={() => { setDlEditId(null); setDlForm({ title: '', date: '', type: 'homework', weight: 5, difficulty: 5 }); setDlShowAdd(true) }}
+                  style={{ background: `${course.color}14`, border: `1px solid ${course.color}33`, borderRadius: 8, color: course.color, fontSize: 11, fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase', padding: '8px 16px' }}>
+                  + Add Deadline
+                </motion.button>
+              </motion.div>
+
+              {/* Deadline rows */}
+              {allCourseDeadlines.length === 0 ? (
+                <motion.div variants={fadeUp} style={{ textAlign: 'center', padding: '56px 24px', background: 'rgba(255,255,255,0.015)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 16 }}>
+                  <motion.div animate={{ y: [0, -5, 0] }} transition={{ duration: 2.5, repeat: Infinity }} style={{ fontSize: 36, marginBottom: 12 }}>📋</motion.div>
+                  <div style={{ fontWeight: 800, color: 'rgba(255,255,255,0.4)', marginBottom: 8 }}>No deadlines yet</div>
+                  <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.2)', marginBottom: 20 }}>Add manually or upload a syllabus to auto-import</div>
+                </motion.div>
+              ) : (
+                <motion.div variants={stagger} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {allCourseDeadlines.map((d) => {
+                    const m = TYPE_META[d.type] || TYPE_META.other
+                    const days = d.date ? Math.floor((new Date(d.date) - new Date()) / 86400000) : null
+                    const dateColor = days === null ? '#64748b' : days < 0 ? '#f87171' : days < 3 ? '#f87171' : days < 7 ? '#fbbf24' : '#34d399'
+                    const dateLabel = days === null ? '—' : days < 0 ? 'Overdue' : days === 0 ? 'Today' : days === 1 ? 'Tomorrow' : `${days}d`
+                    return (
+                      <motion.div key={d.id} variants={fadeUp} className="dl-row"
+                        style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderRadius: 10, transition: 'background 0.15s', background: 'rgba(255,255,255,0.02)', opacity: d.completed ? 0.5 : 1 }}>
+                        {/* Checkbox */}
+                        <motion.button whileTap={{ scale: 0.85 }} onClick={() => toggleDlComplete(d.id)}
+                          style={{ width: 20, height: 20, borderRadius: 6, border: `2px solid ${d.completed ? '#34d399' : 'rgba(255,255,255,0.2)'}`, background: d.completed ? 'rgba(52,211,153,0.15)' : 'transparent', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          {d.completed && <svg width="10" height="10" fill="none" viewBox="0 0 24 24" stroke="#34d399" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
+                        </motion.button>
+                        {/* Type badge */}
+                        <span style={{ fontSize: 8, fontWeight: 900, letterSpacing: '0.15em', textTransform: 'uppercase', color: m.color, background: m.bg, padding: '2px 6px', borderRadius: 4, border: `1px solid ${m.color}33`, flexShrink: 0 }}>{m.label}</span>
+                        {/* Title */}
+                        <div style={{ flex: 1, fontSize: 13, fontWeight: 700, color: 'rgba(255,255,255,0.8)', textDecoration: d.completed ? 'line-through' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.title}</div>
+                        {/* Date */}
+                        <span style={{ fontSize: 11, fontWeight: 800, color: dateColor, flexShrink: 0 }}>{dateLabel}</span>
+                        {/* Actions */}
+                        <div className="dl-actions" style={{ display: 'flex', gap: 4, opacity: 0, transition: 'opacity 0.15s', flexShrink: 0 }}>
+                          <button onClick={() => startEditDl(d)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.3)', padding: '3px 5px', borderRadius: 5, cursor: 'pointer' }}>
+                            <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                          </button>
+                          <button onClick={() => setDlDeleteId(d.id)} style={{ background: 'none', border: 'none', color: 'rgba(239,68,68,0.4)', padding: '3px 5px', borderRadius: 5, cursor: 'pointer' }}>
+                            <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                          </button>
+                        </div>
+                      </motion.div>
+                    )
+                  })}
+                </motion.div>
+              )}
+
+              {/* Add / Edit form */}
+              <AnimatePresence>
+                {dlShowAdd && (
+                  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                    style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(12px)' }}
+                    onClick={e => { if (e.target === e.currentTarget) { setDlShowAdd(false); setDlEditId(null) } }}>
+                    <motion.div initial={{ y: 40, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 40, opacity: 0 }} transition={{ duration: 0.3 }}
+                      style={{ width: '100%', maxWidth: 480, background: '#0d1117', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '20px 20px 0 0', padding: '24px 24px 32px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div style={{ fontSize: 16, fontWeight: 900, color: 'white' }}>{dlEditId ? 'Edit Deadline' : 'Add Deadline'}</div>
+                        <button onClick={() => { setDlShowAdd(false); setDlEditId(null) }} style={{ background: 'rgba(255,255,255,0.05)', border: 'none', borderRadius: 8, width: 30, height: 30, color: 'rgba(255,255,255,0.4)', cursor: 'pointer' }}>✕</button>
+                      </div>
+                      <input type="text" value={dlForm.title} onChange={e => setDlForm(f => ({ ...f, title: e.target.value }))}
+                        placeholder="Assignment title *" autoFocus
+                        style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, color: 'white', padding: '12px 14px', fontSize: 14, outline: 'none', width: '100%', boxSizing: 'border-box' }} />
+                      <input type="date" value={dlForm.date?.slice(0, 10) || ''} onChange={e => setDlForm(f => ({ ...f, date: e.target.value }))}
+                        style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, color: 'white', padding: '12px 14px', fontSize: 14, outline: 'none', width: '100%', boxSizing: 'border-box', colorScheme: 'dark' }} />
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                        {Object.entries(TYPE_META).map(([key, m]) => (
+                          <button key={key} onClick={() => setDlForm(f => ({ ...f, type: key }))}
+                            style={{ padding: '5px 10px', borderRadius: 7, border: `1px solid ${dlForm.type === key ? m.color + '55' : 'transparent'}`, background: dlForm.type === key ? m.bg : 'rgba(255,255,255,0.04)', color: dlForm.type === key ? m.color : 'rgba(255,255,255,0.4)', fontSize: 11, fontWeight: 800, cursor: 'pointer' }}>
+                            {m.label}
+                          </button>
+                        ))}
+                      </div>
+                      <div style={{ display: 'flex', gap: 10 }}>
+                        <button onClick={() => { setDlShowAdd(false); setDlEditId(null) }}
+                          style={{ flex: 1, padding: '13px', borderRadius: 12, border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.4)', fontSize: 13, fontWeight: 800, cursor: 'pointer' }}>
+                          Cancel
+                        </button>
+                        <motion.button whileTap={{ scale: 0.97 }} onClick={saveDl} disabled={!dlForm.title || !dlForm.date}
+                          style={{ flex: 1, padding: '13px', borderRadius: 12, border: 'none', background: (!dlForm.title || !dlForm.date) ? 'rgba(255,255,255,0.04)' : `linear-gradient(135deg, ${course.color}, ${course.color}cc)`, color: (!dlForm.title || !dlForm.date) ? 'rgba(255,255,255,0.25)' : 'white', fontSize: 13, fontWeight: 900, cursor: (!dlForm.title || !dlForm.date) ? 'not-allowed' : 'pointer' }}>
+                          {dlEditId ? 'Save Changes' : 'Add'}
+                        </motion.button>
+                      </div>
+                    </motion.div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Delete confirm */}
+              <AnimatePresence>
+                {dlDeleteId && (
+                  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                    style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(12px)' }}>
+                    <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }} transition={{ duration: 0.2 }}
+                      style={{ background: '#0d1117', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 16, padding: '24px 20px', maxWidth: 300, width: '100%', textAlign: 'center' }}>
+                      <div style={{ fontSize: 15, fontWeight: 900, color: 'white', marginBottom: 8 }}>Remove this deadline?</div>
+                      <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginBottom: 20 }}>"{allDeadlines.find(d => d.id === dlDeleteId)?.title}"</div>
+                      <div style={{ display: 'flex', gap: 10 }}>
+                        <button onClick={() => setDlDeleteId(null)} style={{ flex: 1, padding: '11px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.4)', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>Cancel</button>
+                        <motion.button whileTap={{ scale: 0.96 }} onClick={() => deleteDl(dlDeleteId)} style={{ flex: 1, padding: '11px', borderRadius: 10, border: '1px solid rgba(239,68,68,0.2)', background: 'rgba(239,68,68,0.1)', color: '#f87171', fontSize: 13, fontWeight: 900, cursor: 'pointer' }}>Remove</motion.button>
+                      </div>
+                    </motion.div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </motion.div>
+          )}
+
+          {/* ════════════════ MATERIALS ════════════════ */}
+          {activeTab === 4 && (
             <motion.div key="materials" variants={stagger} initial="initial" animate="animate" exit="exit" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <input type="file" ref={fileInputRef} multiple accept=".txt,.md,.pdf,.pptx,.docx,.csv" style={{ display: 'none' }} onChange={e => { handleMaterialUpload(e.target.files || []); e.target.value = '' }} />
 
@@ -698,7 +853,7 @@ export default function CourseDetail() {
           )}
 
           {/* ════════════════ CLUTCH ════════════════ */}
-          {activeTab === 4 && (
+          {activeTab === 5 && (
             <motion.div key="clutch" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.3, ease }} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
               <motion.div
                 whileHover={{ scale: 1.005 }}

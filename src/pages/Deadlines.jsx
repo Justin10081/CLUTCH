@@ -508,6 +508,82 @@ function DeadlineCard({ d, onComplete, onEdit, onDelete, onSelect, selected, idx
   )
 }
 
+// ─── Calendar view ────────────────────────────────────────────────────────────
+function CalendarView({ deadlines, onEdit, onAddForDate }) {
+  const [month, setMonth] = useState(() => {
+    const d = new Date()
+    return new Date(d.getFullYear(), d.getMonth(), 1)
+  })
+
+  const todayStr = new Date().toISOString().slice(0, 10)
+  const monthLabel = month.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+  const firstDay = month.getDay()
+  const daysInMonth = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate()
+
+  const cells = []
+  for (let i = 0; i < 42; i++) {
+    const d = i - firstDay + 1
+    if (d < 1 || d > daysInMonth) { cells.push(null); continue }
+    const dateStr = `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+    cells.push({ day: d, dateStr })
+  }
+
+  const byDate = {}
+  deadlines.forEach(d => {
+    const key = d.date?.slice(0, 10)
+    if (key) { if (!byDate[key]) byDate[key] = []; byDate[key].push(d) }
+  })
+
+  return (
+    <div style={{ ...S.card, padding: '20px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <button onClick={() => setMonth(m => new Date(m.getFullYear(), m.getMonth() - 1, 1))}
+          style={{ width: 32, height: 32, borderRadius: 8, background: '#131922', border: '1px solid #1e2530', color: '#f1f5f9', fontSize: 18, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>‹</button>
+        <div style={{ fontSize: 15, fontWeight: 900, color: '#f1f5f9', letterSpacing: '-0.02em' }}>{monthLabel}</div>
+        <button onClick={() => setMonth(m => new Date(m.getFullYear(), m.getMonth() + 1, 1))}
+          style={{ width: 32, height: 32, borderRadius: 8, background: '#131922', border: '1px solid #1e2530', color: '#f1f5f9', fontSize: 18, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>›</button>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 3, marginBottom: 6 }}>
+        {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => (
+          <div key={d} style={{ textAlign: 'center', fontSize: 9, fontWeight: 800, letterSpacing: '0.1em', color: '#334155', paddingBottom: 4 }}>{d}</div>
+        ))}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 3 }}>
+        {cells.map((cell, i) => {
+          if (!cell) return <div key={i} style={{ minHeight: 72 }} />
+          const items = byDate[cell.dateStr] || []
+          const isToday = cell.dateStr === todayStr
+          const isPast = cell.dateStr < todayStr
+          return (
+            <div key={i}
+              onClick={() => onAddForDate(cell.dateStr)}
+              style={{
+                minHeight: 72, padding: '5px 4px', cursor: 'pointer', borderRadius: 8,
+                background: isToday ? 'rgba(59,130,246,0.08)' : 'rgba(255,255,255,0.015)',
+                border: `1px solid ${isToday ? 'rgba(59,130,246,0.35)' : 'rgba(255,255,255,0.04)'}`,
+                opacity: isPast && items.length === 0 ? 0.3 : 1,
+                transition: 'background 0.15s',
+              }}>
+              <div style={{ fontSize: 11, fontWeight: isToday ? 900 : 500, color: isToday ? '#3b82f6' : '#64748b', textAlign: 'right', paddingRight: 2, marginBottom: 3 }}>{cell.day}</div>
+              {items.slice(0, 3).map(d => (
+                <div key={d.id}
+                  onClick={e => { e.stopPropagation(); onEdit(d) }}
+                  style={{
+                    fontSize: 9, fontWeight: 700, padding: '2px 4px', borderRadius: 3, marginBottom: 2,
+                    background: (d.courseColor || '#3b82f6') + '28', color: d.courseColor || '#3b82f6',
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    textDecoration: d.completed ? 'line-through' : 'none', opacity: d.completed ? 0.4 : 1, cursor: 'pointer',
+                  }}>{d.title}</div>
+              ))}
+              {items.length > 3 && <div style={{ fontSize: 9, color: '#475569', fontWeight: 700 }}>+{items.length - 3}</div>}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function Deadlines() {
   const { courses } = useCourses()
@@ -600,6 +676,17 @@ export default function Deadlines() {
     setDeadlines(prev => prev.filter((_, i) => !selectedIds.has(i)))
     setSelectedIds(new Set())
   }
+
+  const openAddForDate = useCallback((dateStr) => {
+    setForm({ ...EMPTY_DEADLINE, date: dateStr + 'T23:59' })
+    setEditIndex(null)
+    setShowForm(true)
+  }, [])
+
+  const openEditById = useCallback((dl) => {
+    const i = deadlines.findIndex(d => d.id === dl.id)
+    if (i !== -1) openEdit(i)
+  }, [deadlines])
 
   const showNotifBanner = !notifBannerDismissed && notifPermission !== 'granted' && notifPermission !== 'unsupported'
 
@@ -730,7 +817,7 @@ export default function Deadlines() {
         {/* ── VIEW TOGGLE ── */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
           <div style={{ display: 'flex', background: '#0d1117', border: '1px solid #1e2530', borderRadius: 10, padding: 3, gap: 2 }}>
-            {[['list', 'List'], ['timeline', 'Timeline']].map(([mode, label]) => (
+            {[['list', 'To-Do'], ['calendar', 'Calendar']].map(([mode, label]) => (
               <button key={mode} onClick={() => setViewMode(mode)} style={{
                 padding: '6px 14px', borderRadius: 8, border: 'none', cursor: 'pointer',
                 fontSize: 11, fontWeight: 900, transition: 'all 0.15s',
@@ -793,8 +880,8 @@ export default function Deadlines() {
               {search ? 'Try a different search term' : 'Tap + to add your first deadline'}
             </div>
           </motion.div>
-        ) : viewMode === 'timeline' ? (
-          <TimelineView deadlines={sortedDeadlines} />
+        ) : viewMode === 'calendar' ? (
+          <CalendarView deadlines={deadlines} onEdit={openEditById} onAddForDate={openAddForDate} />
         ) : (
           <motion.div layout style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <AnimatePresence>
