@@ -79,12 +79,13 @@ export function DeadlinesProvider({ children }) {
         if (data.length === 0) {
           const localDeadlines = load()
           if (localDeadlines.length > 0) {
-            console.log(`Recovering ${localDeadlines.length} deadline(s) from localStorage to Supabase`)
+            // Restore state from localStorage (useState only runs on first mount)
+            setDeadlinesState(localDeadlines)
             supabase
               .from('deadlines')
               .upsert(localDeadlines.map(d => toDB(d, user.id)), { onConflict: 'id' })
               .then(({ error: e }) => { if (e) console.error('Deadline recovery sync error:', e) })
-            return // State already has local deadlines from init
+            return
           }
           setDeadlinesState([])
           return

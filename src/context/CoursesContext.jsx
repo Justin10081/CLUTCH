@@ -114,14 +114,15 @@ export function CoursesProvider({ children }) {
         if (coursesData.length === 0) {
           const localCourses = load()
           if (localCourses.length > 0) {
-            console.log(`Recovering ${localCourses.length} course(s) from localStorage to Supabase`)
-            await Promise.all(localCourses.map(async c => {
-              // Step 1: upsert core course data (no syllabus_data — avoids Unicode surrogate pair issues)
+            // Restore state from localStorage (useState(load) only runs on first mount,
+            // so after logout+login on the same page the state is [] — fix it here)
+            setCourses(localCourses)
+            // Push to Supabase in the background
+            Promise.all(localCourses.map(async c => {
               const { error: e1 } = await supabase
                 .from('courses')
                 .upsert(toDB(c, user.id), { onConflict: 'id' })
               if (e1) { console.error('Recovery core upsert error:', e1); return }
-              // Step 2: update syllabus_data separately with sanitized data
               if (c.syllabusData) {
                 const { error: e2 } = await supabase
                   .from('courses')
@@ -131,7 +132,6 @@ export function CoursesProvider({ children }) {
                 if (e2) console.error('Recovery syllabus update error:', e2)
               }
             }))
-            // State is already correct (loaded from localStorage at init)
             return
           }
           // Both Supabase and localStorage are empty — genuinely no courses
