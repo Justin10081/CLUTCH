@@ -124,8 +124,17 @@ export function CoursesProvider({ children }) {
             Promise.all(localCourses.map(async c => {
               const { error: e1 } = await supabase
                 .from('courses')
-                .upsert(toDB(c, user.id), { onConflict: 'id' })
-              if (e1) { console.error('Recovery core upsert error:', e1); return }
+                .insert(toDB(c, user.id))
+              if (e1) {
+                if (e1.code !== '23505') { console.error('Recovery core insert error:', e1); return }
+                // Row already exists — update it instead
+                const { error: eu } = await supabase
+                  .from('courses')
+                  .update(toDB(c, user.id))
+                  .eq('id', c.id)
+                  .eq('user_id', user.id)
+                if (eu) { console.error('Recovery core update error:', eu); return }
+              }
               if (c.syllabusData) {
                 const { error: e2 } = await supabase
                   .from('courses')

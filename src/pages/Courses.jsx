@@ -123,7 +123,6 @@ export default function Courses() {
 
   const handleSave = async () => {
     if (!form.name.trim() || !form.code.trim()) return
-    setParsing(false)
 
     let course
     if (editId) {
@@ -133,12 +132,19 @@ export default function Courses() {
       course = await addCourse({ ...form })
     }
 
+    // Close modal immediately so the user sees the new course card right away
+    setShowModal(false)
+    setEditId(null)
+
     if (syllabusFile) {
+      // Capture file reference before state resets
+      const fileToProcess = syllabusFile
+      setSyllabusFile(null)
       setParsing(true)
       try {
-        const text = await extractTextFromFile(syllabusFile)
+        const text = await extractTextFromFile(fileToProcess)
         const parsed = await parseSyllabus(text, course.name, course.code)
-        await updateCourse(course.id, { syllabusName: syllabusFile.name, syllabusData: parsed })
+        await updateCourse(course.id, { syllabusName: fileToProcess.name, syllabusData: parsed })
         const newDeadlines = syllabusToDeadlines(parsed, course.id, course.name, course.code, course.color)
         if (newDeadlines.length > 0) replaceCourseSyllabusDeadlines(course.id, newDeadlines)
       } catch (err) {
@@ -146,9 +152,6 @@ export default function Courses() {
       }
       setParsing(false)
     }
-
-    setShowModal(false)
-    setEditId(null)
   }
 
   const getUpcomingCount = (courseId) => {
@@ -716,7 +719,7 @@ export default function Courses() {
                 <motion.button
                   whileTap={{ scale: 0.97 }}
                   onClick={handleSave}
-                  disabled={!form.name.trim() || !form.code.trim() || parsing}
+                  disabled={!form.name.trim() || !form.code.trim()}
                   style={{
                     flex: 1,
                     background: (!form.name.trim() || !form.code.trim())
@@ -728,7 +731,7 @@ export default function Courses() {
                     opacity: (!form.name.trim() || !form.code.trim()) ? 0.4 : 1,
                     boxShadow: (!form.name.trim() || !form.code.trim()) ? 'none' : '0 0 20px rgba(59,130,246,0.3)',
                   }}>
-                  {parsing ? 'Parsing Syllabus...' : editId ? 'Save Changes' : syllabusFile ? 'Add & Parse Syllabus' : 'Add Course'}
+                  {editId ? 'Save Changes' : syllabusFile ? 'Add & Parse Syllabus' : 'Add Course'}
                 </motion.button>
               </div>
             </motion.div>
