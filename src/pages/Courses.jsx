@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'motion/react'
 import { useCourses } from '../context/CoursesContext'
 import { useDeadlines } from '../context/DeadlinesContext'
+import { extractTextFromFile, parseSyllabus, syllabusToDeadlines } from '../utils/syllabusParser'
 
 const COURSE_COLORS = [
   '#3b82f6', '#06b6d4', '#22c55e', '#10b981',
@@ -86,12 +87,13 @@ function CinemaSelect({ style, ...props }) {
 
 export default function Courses() {
   const { courses, addCourse, updateCourse, deleteCourse } = useCourses()
-  const { deadlines: allDeadlines } = useDeadlines()
+  const { deadlines: allDeadlines, replaceCourseSyllabusDeadlines } = useDeadlines()
   const [showModal, setShowModal] = useState(false)
   const [editId, setEditId] = useState(null)
   const [form, setForm] = useState({ ...EMPTY_FORM })
   const [deleteConfirm, setDeleteConfirm] = useState(null)
-  const [syllabusFile, setSyllabusFile] = useState(null)
+  const [syllabusFile, setSyllabusFile] = useState(null) // stores raw File object
+  const [parsing, setParsing] = useState(false)
   const [hoveredCard, setHoveredCard] = useState(null)
   const syllabusRef = useRef()
 
@@ -116,25 +118,35 @@ export default function Courses() {
   const handleSyllabusUpload = (e) => {
     const file = e.target.files?.[0]
     if (!file) return
-    const reader = new FileReader()
-    reader.onload = (ev) => {
-      setSyllabusFile({ name: file.name, content: ev.target.result })
-    }
-    reader.readAsText(file)
+    setSyllabusFile(file) // store raw File — parsed on save
   }
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!form.name.trim() || !form.code.trim()) return
-    const data = { ...form }
-    if (syllabusFile) {
-      data.syllabus = syllabusFile.content
-      data.syllabusName = syllabusFile.name
-    }
+    setParsing(false)
+
+    let course
     if (editId) {
-      updateCourse(editId, data)
+      updateCourse(editId, { ...form })
+      course = { id: editId, ...form }
     } else {
-      addCourse(data)
+      course = await addCourse({ ...form })
     }
+
+    if (syllabusFile) {
+      setParsing(true)
+      try {
+        const text = await extractTextFromFile(syllabusFile)
+        const parsed = await parseSyllabus(text, course.name, course.code)
+        await updateCourse(course.id, { syllabusName: syllabusFile.name, syllabusData: parsed })
+        const newDeadlines = syllabusToDeadlines(parsed, course.id, course.name, course.code, course.color)
+        if (newDeadlines.length > 0) replaceCourseSyllabusDeadlines(course.id, newDeadlines)
+      } catch (err) {
+        console.error('Syllabus parse error:', err)
+      }
+      setParsing(false)
+    }
+
     setShowModal(false)
     setEditId(null)
   }
@@ -704,7 +716,7 @@ export default function Courses() {
                 <motion.button
                   whileTap={{ scale: 0.97 }}
                   onClick={handleSave}
-                  disabled={!form.name.trim() || !form.code.trim()}
+                  disabled={!form.name.trim() || !form.code.trim() || parsing}
                   style={{
                     flex: 1,
                     background: (!form.name.trim() || !form.code.trim())
@@ -716,7 +728,7 @@ export default function Courses() {
                     opacity: (!form.name.trim() || !form.code.trim()) ? 0.4 : 1,
                     boxShadow: (!form.name.trim() || !form.code.trim()) ? 'none' : '0 0 20px rgba(59,130,246,0.3)',
                   }}>
-                  {editId ? 'Save Changes' : 'Add Course'}
+                  {parsing ? 'Parsing Syllabus...' : editId ? 'Save Changes' : syllabusFile ? 'Add & Parse Syllabus' : 'Add Course'}
                 </motion.button>
               </div>
             </motion.div>
