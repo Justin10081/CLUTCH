@@ -241,15 +241,16 @@ export function CoursesProvider({ children }) {
 
       // Re-read from state to get the latest merged value
       const dbChanges = {}
-      if ('name' in changes) dbChanges.name = changes.name
-      if ('code' in changes) dbChanges.code = changes.code
-      if ('professor' in changes) dbChanges.professor = changes.professor
+      const san = (s) => typeof s === 'string' ? sanitizeForDB(s) : s
+      if ('name' in changes) dbChanges.name = san(changes.name)
+      if ('code' in changes) dbChanges.code = san(changes.code)
+      if ('professor' in changes) dbChanges.professor = san(changes.professor)
       if ('credits' in changes) dbChanges.credits = changes.credits
-      if ('color' in changes) dbChanges.color = changes.color
-      if ('semester' in changes) dbChanges.semester = changes.semester
-      if ('targetGrade' in changes) dbChanges.target_grade = changes.targetGrade
-      if ('syllabus' in changes) dbChanges.syllabus = changes.syllabus
-      if ('syllabusName' in changes) dbChanges.syllabus_name = changes.syllabusName
+      if ('color' in changes) dbChanges.color = san(changes.color)
+      if ('semester' in changes) dbChanges.semester = san(changes.semester)
+      if ('targetGrade' in changes) dbChanges.target_grade = san(changes.targetGrade)
+      if ('syllabus' in changes) dbChanges.syllabus = changes.syllabus ? san(changes.syllabus) : null
+      if ('syllabusName' in changes) dbChanges.syllabus_name = changes.syllabusName ? san(changes.syllabusName) : null
       if ('syllabusData' in changes) dbChanges.syllabus_data = changes.syllabusData ? sanitizeForDB(changes.syllabusData) : null
 
       if (Object.keys(dbChanges).length === 0) return
