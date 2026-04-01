@@ -83,12 +83,12 @@ export function CoursesProvider({ children }) {
 
   useEffect(() => { userRef.current = user }, [user])
 
-  // Clear all data when user logs out — but NOT during initial auth load
-  // (user is null while Supabase is restoring the session, so we must wait)
+  // Clear in-memory state when user logs out — but NOT during initial auth load.
+  // We intentionally keep localStorage intact so the recovery sync can push it
+  // to Supabase on the next login (handles the case where Supabase writes failed).
   useEffect(() => {
     if (!loading && !user) {
       setCourses([])
-      try { localStorage.removeItem(LS_KEY) } catch (_) {}
     }
   }, [user, loading])
 

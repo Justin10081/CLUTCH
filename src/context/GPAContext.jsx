@@ -53,17 +53,13 @@ export function GPAProvider({ children }) {
   useEffect(() => { cumulativeCreditsRef.current = cumulativeCredits }, [cumulativeCredits])
   useEffect(() => { userRef.current = user }, [user])
 
-  // Clear all data when user logs out — but NOT during initial auth load
+  // Clear in-memory state when user logs out — but NOT during initial auth load.
+  // Keep localStorage intact for recovery sync on next login.
   useEffect(() => {
     if (!loading && !user) {
       setCoursesState([{ ...EMPTY_COURSE, name: 'Course 1' }])
       setCumulativeGPAState(0)
       setCumulativeCreditsState(0)
-      try {
-        localStorage.removeItem('clutch-gpa-courses')
-        localStorage.removeItem('clutch-cumulative-gpa')
-        localStorage.removeItem('clutch-cumulative-credits')
-      } catch (_) {}
     }
   }, [user, loading])
 

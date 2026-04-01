@@ -31,15 +31,12 @@ export function SessionsProvider({ children }) {
 
   useEffect(() => { userRef.current = user }, [user])
 
-  // Clear all data when user logs out — but NOT during initial auth load
+  // Clear in-memory state when user logs out — but NOT during initial auth load.
+  // Keep localStorage intact for recovery sync on next login.
   useEffect(() => {
     if (!loading && !user) {
       setSessions([])
       setSessionCount(0)
-      try {
-        localStorage.removeItem('clutch-sessions')
-        localStorage.removeItem('clutch-session-count')
-      } catch (_) {}
     }
   }, [user, loading])
 

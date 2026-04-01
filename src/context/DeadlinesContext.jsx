@@ -52,12 +52,11 @@ export function DeadlinesProvider({ children }) {
 
   useEffect(() => { userRef.current = user }, [user])
 
-  // Clear all data when user logs out — but NOT during initial auth load
-  // (user is null while Supabase is restoring the session, so we must wait)
+  // Clear in-memory state when user logs out — but NOT during initial auth load.
+  // Keep localStorage intact so recovery sync can restore data on next login.
   useEffect(() => {
     if (!loading && !user) {
       setDeadlinesState([])
-      try { localStorage.removeItem(LS_KEY) } catch (_) {}
     }
   }, [user, loading])
 
