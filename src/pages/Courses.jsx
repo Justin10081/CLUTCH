@@ -87,7 +87,7 @@ function CinemaSelect({ style, ...props }) {
 
 export default function Courses() {
   const { courses, addCourse, updateCourse, deleteCourse } = useCourses()
-  const { deadlines: allDeadlines, replaceCourseSyllabusDeadlines } = useDeadlines()
+  const { deadlines: allDeadlines, replaceCourseSyllabusDeadlines, removeDeadlinesByCourse } = useDeadlines()
   const [showModal, setShowModal] = useState(false)
   const [editId, setEditId] = useState(null)
   const [form, setForm] = useState({ ...EMPTY_FORM })
@@ -877,7 +877,7 @@ export default function Courses() {
                 </button>
                 <motion.button
                   whileTap={{ scale: 0.96 }}
-                  onClick={() => { deleteCourse(deleteConfirm); setDeleteConfirm(null) }}
+                  onClick={() => { deleteCourse(deleteConfirm); removeDeadlinesByCourse(deleteConfirm); setDeleteConfirm(null) }}
                   style={{
                     flex: 1, background: 'rgba(239,68,68,0.15)',
                     border: '1px solid rgba(239,68,68,0.25)',

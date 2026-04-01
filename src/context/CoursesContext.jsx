@@ -111,6 +111,10 @@ export function CoursesProvider({ children }) {
   useEffect(() => {
     if (!user || user.demo || !isSupabaseConfigured()) return
 
+    // Immediately restore from localStorage so courses show before Supabase responds
+    const localSnapshot = load()
+    if (localSnapshot.length > 0) setCourses(localSnapshot)
+
     supabase
       .from('courses')
       .select('*')

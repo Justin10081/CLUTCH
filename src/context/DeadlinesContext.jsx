@@ -82,6 +82,11 @@ export function DeadlinesProvider({ children }) {
   // Load from Supabase on auth
   useEffect(() => {
     if (!user || user.demo || !isSupabaseConfigured()) return
+
+    // Immediately restore from localStorage so deadlines show before Supabase responds
+    const localSnapshot = load()
+    if (localSnapshot.length > 0) setDeadlinesState(localSnapshot)
+
     supabase
       .from('deadlines')
       .select('*')
@@ -184,6 +189,11 @@ export function DeadlinesProvider({ children }) {
     })
   }, [setDeadlines])
 
+  // Remove all deadlines for a course (used when deleting a course)
+  const removeDeadlinesByCourse = useCallback((courseId) => {
+    setDeadlines(prev => prev.filter(d => d.courseId !== courseId))
+  }, [setDeadlines])
+
   return (
     <DeadlinesContext.Provider value={{
       deadlines,
@@ -191,6 +201,7 @@ export function DeadlinesProvider({ children }) {
       addDeadline,
       addDeadlines,
       replaceCourseSyllabusDeadlines,
+      removeDeadlinesByCourse,
     }}>
       {children}
     </DeadlinesContext.Provider>
