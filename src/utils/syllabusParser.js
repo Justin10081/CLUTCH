@@ -36,7 +36,11 @@ export async function extractTextFromFile(file) {
 }
 
 // ── Groq AI parser ─────────────────────────────────────────────────────────────
-const GROQ_URL = '/api/groq'
+// Try direct Groq call first (uses VITE_GROQ_API_KEY baked in at build time).
+// Fall back to the secure server proxy (/api/groq) if the key isn't available
+// client-side (e.g., it was removed from Vercel env vars for security).
+const DIRECT_GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions'
+const PROXY_URL = '/api/groq'
 
 const PROMPT = (text, courseName, courseCode) => `
 You are an expert university syllabus parser. Extract EVERY piece of information from this syllabus and return a complete, structured JSON object.
@@ -118,25 +122,48 @@ Rules:
 - Be thorough — students depend on this data
 `
 
+const GROQ_BODY = (text, courseName, courseCode) => JSON.stringify({
+  model: 'llama-3.3-70b-versatile',
+  messages: [{ role: 'user', content: PROMPT(text, courseName, courseCode) }],
+  response_format: { type: 'json_object' },
+  temperature: 0.05,
+  max_tokens: 4096,
+})
+
+async function callGroqDirect(text, courseName, courseCode) {
+  const key = import.meta.env.VITE_GROQ_API_KEY
+  if (!key) return null
+  const res = await fetch(DIRECT_GROQ_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+    body: GROQ_BODY(text, courseName, courseCode),
+  })
+  return res
+}
+
+async function callGroqProxy(text, courseName, courseCode) {
+  const token = await getAuthToken()
+  const res = await fetch(PROXY_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: GROQ_BODY(text, courseName, courseCode),
+  })
+  return res
+}
+
 export async function parseSyllabus(text, courseName, courseCode, onStep) {
   onStep?.('Reading course structure...')
 
   try {
-    const token = await getAuthToken()
-    const res = await fetch(GROQ_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
-        messages: [{ role: 'user', content: PROMPT(text, courseName, courseCode) }],
-        response_format: { type: 'json_object' },
-        temperature: 0.05,
-        max_tokens: 4096,
-      }),
-    })
+    // Try direct Groq call first (VITE_GROQ_API_KEY in build env)
+    // then proxy (/api/groq with server-side GROQ_API_KEY)
+    let res = await callGroqDirect(text, courseName, courseCode)
+    if (!res || !res.ok) {
+      res = await callGroqProxy(text, courseName, courseCode)
+    }
 
     if (res.status === 429) {
       const { error } = await res.json().catch(() => ({}))
@@ -144,9 +171,8 @@ export async function parseSyllabus(text, courseName, courseCode, onStep) {
     }
 
     if (!res.ok) {
-      const err = await res.text()
-      console.warn('Groq error, falling back:', err)
-      onStep?.('Falling back to smart extraction...')
+      console.warn('Groq unavailable, using smart extraction')
+      onStep?.('Using smart extraction...')
       return parseSyllabusFallback(text, courseName, courseCode)
     }
 
@@ -155,7 +181,7 @@ export async function parseSyllabus(text, courseName, courseCode, onStep) {
     const parsed = JSON.parse(data.choices[0].message.content)
     return normalizeResult(parsed)
   } catch (e) {
-    console.warn('Syllabus parse error, falling back:', e)
+    console.warn('Syllabus parse error, using smart extraction:', e)
     onStep?.('Using smart extraction...')
     return parseSyllabusFallback(text, courseName, courseCode)
   }
