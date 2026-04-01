@@ -22,7 +22,11 @@ export default async function handler(req, res) {
   // ── Groq API key — check both prefixed and unprefixed variants ────────────────
   // Vercel env vars may use VITE_ prefix (set for client build) or plain names
   const apiKey = process.env.GROQ_API_KEY || process.env.VITE_GROQ_API_KEY
-  if (!apiKey) return res.status(503).json({ error: 'AI service not configured' })
+  if (!apiKey) {
+    console.error('groq proxy: no API key found in env (checked GROQ_API_KEY, VITE_GROQ_API_KEY)')
+    return res.status(503).json({ error: 'AI service not configured' })
+  }
+  console.log('groq proxy: request received, key present:', apiKey.slice(0, 8) + '...')
 
   // ── Optional auth — validate Supabase JWT for rate limiting if configured ─────
   const token = (req.headers.authorization || '').replace('Bearer ', '').trim()
