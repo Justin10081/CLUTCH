@@ -48,12 +48,24 @@ function toDB(c, userId) {
   return row
 }
 
-// Remove characters that PostgreSQL rejects: non-BMP (emoji etc.), lone surrogates, null bytes
+// Remove characters that PostgreSQL rejects: non-BMP (emoji/surrogate pairs) and null bytes.
+// Uses a character-by-character loop instead of regex to avoid esbuild mangling /gu Unicode patterns.
 function sanitizeForDB(val) {
-  if (typeof val === 'string') return val
-    .replace(/[\u{10000}-\u{10FFFF}]/gu, '') // non-BMP emoji (surrogate-pair encoded)
-    .replace(/[\uD800-\uDFFF]/g, '')          // lone BMP surrogates
-    .replace(/\u0000/g, '')                   // null bytes
+  if (typeof val === 'string') {
+    let out = ''
+    for (let i = 0; i < val.length; i++) {
+      const c = val.charCodeAt(i)
+      if (c === 0) continue                          // null byte
+      if (c >= 0xD800 && c <= 0xDBFF) {             // high surrogate
+        const next = i + 1 < val.length ? val.charCodeAt(i + 1) : 0
+        if (next >= 0xDC00 && next <= 0xDFFF) i++   // valid pair — skip both halves
+        continue
+      }
+      if (c >= 0xDC00 && c <= 0xDFFF) continue      // lone low surrogate
+      out += val[i]
+    }
+    return out
+  }
   if (Array.isArray(val)) return val.map(sanitizeForDB)
   if (val !== null && typeof val === 'object') {
     return Object.fromEntries(Object.entries(val).map(([k, v]) => [k, sanitizeForDB(v)]))

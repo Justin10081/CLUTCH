@@ -94,6 +94,8 @@ export default function Courses() {
   const [deleteConfirm, setDeleteConfirm] = useState(null)
   const [syllabusFile, setSyllabusFile] = useState(null) // stores raw File object
   const [parsing, setParsing] = useState(false)
+  const [parseStep, setParseStep] = useState(-1) // -1=idle, 0-3=steps, 4=done, 5=error
+  const [parseMsg, setParseMsg] = useState('')
   const [hoveredCard, setHoveredCard] = useState(null)
   const syllabusRef = useRef()
 
@@ -101,6 +103,9 @@ export default function Courses() {
     setForm({ ...EMPTY_FORM })
     setEditId(null)
     setSyllabusFile(null)
+    setParseStep(-1)
+    setParseMsg('')
+    setParsing(false)
     setShowModal(true)
   }
 
@@ -112,6 +117,9 @@ export default function Courses() {
     })
     setEditId(course.id)
     setSyllabusFile(null)
+    setParseStep(-1)
+    setParseMsg('')
+    setParsing(false)
     setShowModal(true)
   }
 
@@ -132,25 +140,45 @@ export default function Courses() {
       course = await addCourse({ ...form })
     }
 
-    // Close modal immediately so the user sees the new course card right away
-    setShowModal(false)
-    setEditId(null)
+    if (!syllabusFile) {
+      setShowModal(false)
+      setEditId(null)
+      return
+    }
 
-    if (syllabusFile) {
-      // Capture file reference before state resets
-      const fileToProcess = syllabusFile
-      setSyllabusFile(null)
-      setParsing(true)
-      try {
-        const text = await extractTextFromFile(fileToProcess)
-        const parsed = await parseSyllabus(text, course.name, course.code)
-        await updateCourse(course.id, { syllabusName: fileToProcess.name, syllabusData: parsed })
-        const newDeadlines = syllabusToDeadlines(parsed, course.id, course.name, course.code, course.color)
-        if (newDeadlines.length > 0) replaceCourseSyllabusDeadlines(course.id, newDeadlines)
-      } catch (err) {
-        console.error('Syllabus parse error:', err)
-      }
-      setParsing(false)
+    // Keep modal open — show live parse progress
+    const fileToProcess = syllabusFile
+    setSyllabusFile(null)
+    setParsing(true)
+    setParseStep(0)
+    setParseMsg('Extracting text from file...')
+
+    try {
+      const text = await extractTextFromFile(fileToProcess)
+
+      setParseStep(1)
+      setParseMsg('Reading course structure...')
+      const onStep = (msg) => { setParseMsg(msg); setParseStep(s => Math.min(s + 1, 2)) }
+      const parsed = await parseSyllabus(text, course.name, course.code, onStep)
+
+      setParseStep(2)
+      setParseMsg('Saving to your account...')
+      await updateCourse(course.id, { syllabusName: fileToProcess.name, syllabusData: parsed })
+      const newDeadlines = syllabusToDeadlines(parsed, course.id, course.name, course.code, course.color)
+      if (newDeadlines.length > 0) replaceCourseSyllabusDeadlines(course.id, newDeadlines)
+
+      setParseStep(3)
+      setParseMsg(`Done! ${newDeadlines.length} deadline${newDeadlines.length !== 1 ? 's' : ''} imported.`)
+      setTimeout(() => {
+        setParsing(false)
+        setParseStep(-1)
+        setShowModal(false)
+        setEditId(null)
+      }, 1600)
+    } catch (err) {
+      console.error('Syllabus parse error:', err)
+      setParseStep(5)
+      setParseMsg(err.message || 'Failed to parse. Try a .txt or .md version.')
     }
   }
 
@@ -498,8 +526,9 @@ export default function Courses() {
               backdropFilter: 'blur(12px)',
               WebkitBackdropFilter: 'blur(12px)',
             }}
-            onClick={(e) => { if (e.target === e.currentTarget) setShowModal(false) }}>
+            onClick={(e) => { if (!parsing && e.target === e.currentTarget) setShowModal(false) }}>
 
+            <style>{`@keyframes courses-spin { to { transform: rotate(360deg) } }`}</style>
             <motion.div
               initial={{ opacity: 0, y: 32, scale: 0.97 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -532,21 +561,73 @@ export default function Courses() {
                     {editId ? 'Edit Course' : 'Add Course'}
                   </div>
                 </div>
-                <button
-                  onClick={() => setShowModal(false)}
-                  style={{
-                    background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)',
-                    borderRadius: 8, width: 32, height: 32,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    color: 'rgba(255,255,255,0.4)', cursor: 'none',
-                    fontSize: 16, lineHeight: 1,
-                  }}>
-                  ✕
-                </button>
+                {!parsing && (
+                  <button
+                    onClick={() => setShowModal(false)}
+                    style={{
+                      background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)',
+                      borderRadius: 8, width: 32, height: 32,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      color: 'rgba(255,255,255,0.4)', cursor: 'none',
+                      fontSize: 16, lineHeight: 1,
+                    }}>
+                    ✕
+                  </button>
+                )}
               </div>
 
-              {/* Modal body */}
-              <div style={{ padding: '24px 28px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 20 }}>
+              {/* Modal body — parse progress overlay */}
+              {parsing && (
+                <div style={{ padding: '32px 28px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 24 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 8 }}>
+                    {parseStep < 3 ? (
+                      <div style={{
+                        width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
+                        border: '2.5px solid transparent',
+                        borderTopColor: '#3b82f6', borderRightColor: '#3b82f6',
+                        animation: 'courses-spin 1s linear infinite',
+                      }} />
+                    ) : (
+                      <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'rgba(34,197,94,0.15)', border: '2px solid rgba(34,197,94,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, flexShrink: 0 }}>✓</div>
+                    )}
+                    <span style={{ fontSize: 14, fontWeight: 700, color: 'rgba(255,255,255,0.85)' }}>
+                      {parseStep === 5 ? 'Parse failed' : parseMsg || 'Working...'}
+                    </span>
+                  </div>
+                  {[
+                    { label: 'Extracting text from file' },
+                    { label: 'Reading course structure' },
+                    { label: 'Organizing assignments & deadlines' },
+                    { label: 'Saving to your account' },
+                  ].map((s, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, opacity: i <= parseStep ? 1 : 0.25, transition: 'opacity 0.3s' }}>
+                      <div style={{
+                        width: 20, height: 20, borderRadius: '50%', flexShrink: 0,
+                        background: i < parseStep ? 'rgba(34,197,94,0.15)' : i === parseStep ? 'rgba(59,130,246,0.15)' : 'rgba(255,255,255,0.04)',
+                        border: `1.5px solid ${i < parseStep ? 'rgba(34,197,94,0.5)' : i === parseStep ? 'rgba(59,130,246,0.5)' : 'rgba(255,255,255,0.1)'}`,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 10, color: i < parseStep ? '#4ade80' : '#3b82f6',
+                      }}>
+                        {i < parseStep ? '✓' : i + 1}
+                      </div>
+                      <span style={{ fontSize: 12, fontWeight: 500, color: i <= parseStep ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.3)' }}>
+                        {s.label}
+                      </span>
+                    </div>
+                  ))}
+                  {parseStep === 5 && (
+                    <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 8, padding: '12px 16px', fontSize: 12, color: '#f87171' }}>
+                      {parseMsg || 'Could not parse syllabus. Try a .txt or .pdf file.'}
+                      <button onClick={() => { setParsing(false); setParseStep(-1); setShowModal(false); setEditId(null) }}
+                        style={{ marginLeft: 12, background: 'none', border: 'none', color: '#f87171', textDecoration: 'underline', cursor: 'none', fontSize: 12 }}>
+                        Close
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+              {/* Modal body — form fields */}
+              <div style={{ padding: '24px 28px', overflowY: 'auto', flex: 1, display: parsing ? 'none' : 'flex', flexDirection: 'column', gap: 20 }}>
 
                 {/* Color picker */}
                 <div>
@@ -686,11 +767,11 @@ export default function Courses() {
                 </div>
               </div>
 
-              {/* Modal footer */}
+              {/* Modal footer — hidden while parsing */}
               <div style={{
                 padding: '20px 28px',
                 borderTop: '1px solid rgba(255,255,255,0.06)',
-                display: 'flex', gap: 10, flexShrink: 0,
+                display: parsing ? 'none' : 'flex', gap: 10, flexShrink: 0,
                 background: 'rgba(0,0,0,0.2)',
               }}>
                 {editId && (

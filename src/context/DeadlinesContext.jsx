@@ -26,11 +26,23 @@ function fromDB(row) {
   }
 }
 
-// Strip characters PostgreSQL rejects: non-BMP emoji, lone surrogates, null bytes
+// Strip characters PostgreSQL rejects: non-BMP emoji, lone surrogates, null bytes.
+// Character-by-character to avoid esbuild mangling /gu Unicode regex patterns.
 function sanitize(s) {
-  return typeof s === 'string'
-    ? s.replace(/[\u{10000}-\u{10FFFF}]/gu, '').replace(/[\uD800-\uDFFF]/g, '').replace(/\u0000/g, '')
-    : s
+  if (typeof s !== 'string') return s
+  let out = ''
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i)
+    if (c === 0) continue
+    if (c >= 0xD800 && c <= 0xDBFF) {
+      const next = i + 1 < s.length ? s.charCodeAt(i + 1) : 0
+      if (next >= 0xDC00 && next <= 0xDFFF) i++
+      continue
+    }
+    if (c >= 0xDC00 && c <= 0xDFFF) continue
+    out += s[i]
+  }
+  return out
 }
 
 // Local camelCase → DB row
