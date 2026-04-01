@@ -13,8 +13,7 @@ export async function extractTextFromFile(file) {
 
   if (ext === 'pdf') {
     const pdfjsLib = await import('pdfjs-dist')
-    const pdfjsWorker = (await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default
-    pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
     const buffer = await file.arrayBuffer()
     const pdf = await pdfjsLib.getDocument({ data: buffer }).promise
     let text = ''
