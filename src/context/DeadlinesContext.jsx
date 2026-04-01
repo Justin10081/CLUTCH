@@ -26,15 +26,20 @@ function fromDB(row) {
   }
 }
 
+// Strip non-BMP Unicode (emoji etc.) that PostgreSQL's JSON parser rejects as surrogate pairs
+function sanitize(s) {
+  return typeof s === 'string' ? s.replace(/[\u{10000}-\u{10FFFF}]/gu, '') : s
+}
+
 // Local camelCase → DB row
 function toDB(d, userId) {
   return {
     id: d.id,
     user_id: userId,
-    title: d.title || '',
-    course_name: d.course || '',
+    title: sanitize(d.title) || '',
+    course_name: sanitize(d.course) || '',
     course_id: d.courseId || null,
-    course_color: d.courseColor || '#3b82f6',
+    course_color: sanitize(d.courseColor) || '#3b82f6',
     due_date: d.date || null,
     weight: d.weight ?? 5,
     difficulty: d.difficulty ?? 5,

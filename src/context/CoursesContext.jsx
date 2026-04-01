@@ -30,17 +30,18 @@ function fromDB(row) {
 
 // Local camelCase → DB columns for INSERT (no syllabus_data — let it default to null)
 function toDB(c, userId) {
+  const san = (s) => typeof s === 'string' ? sanitizeForDB(s) : s
   const row = {
     id: c.id,
-    name: c.name || '',
-    code: c.code || '',
-    professor: c.professor || '',
+    name: san(c.name) || '',
+    code: san(c.code) || '',
+    professor: san(c.professor) || '',
     credits: c.credits || 3,
-    color: c.color || '#3b82f6',
-    semester: c.semester || '',
-    target_grade: c.targetGrade || 'B+',
-    syllabus: c.syllabus || null,
-    syllabus_name: c.syllabusName || null,
+    color: san(c.color) || '#3b82f6',
+    semester: san(c.semester) || '',
+    target_grade: san(c.targetGrade) || 'B+',
+    syllabus: c.syllabus ? san(c.syllabus) : null,
+    syllabus_name: c.syllabusName ? san(c.syllabusName) : null,
     // syllabus_data intentionally omitted from INSERT — updated separately via updateCourse
   }
   if (userId) row.user_id = userId
