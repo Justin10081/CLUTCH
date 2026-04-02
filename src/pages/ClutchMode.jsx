@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useLocation } from 'react-router-dom'
+import { motion, AnimatePresence } from 'motion/react'
 import { useCourses } from '../context/CoursesContext'
 import { useSessions } from '../context/SessionsContext'
 import { getAuthToken } from '../lib/supabase'
@@ -8,7 +9,7 @@ import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker
 
-// ─── PDF text extraction ───────────────────────────────────────────────────────
+// ─── PDF extraction ────────────────────────────────────────────────────────────
 async function extractPDFText(file) {
   const arrayBuffer = await file.arrayBuffer()
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
@@ -21,114 +22,325 @@ async function extractPDFText(file) {
   return text
 }
 
-// ─── Fallback generator ────────────────────────────────────────────────────────
+// ─── Fallback ─────────────────────────────────────────────────────────────────
 function generateFallback(topic, files) {
   const hasFiles = files.length > 0
   const fileNames = files.map(f => f.name).join(', ')
   return {
+    plainEnglish: `Think of ${topic} as a system with several interconnected parts. At its core, it's about understanding how specific concepts relate to each other and why those relationships matter. The key insight is that nothing in ${topic} exists in isolation — every definition, rule, or formula is tied to a deeper underlying mechanism.\n\nHere's what most students miss: knowing what something is called is not the same as understanding it. For ${topic}, you need to be able to explain each concept's cause, its effect, and the conditions under which the rules change. That's what exams actually test.\n\nIf you can explain ${topic} out loud to someone who has never studied it, using your own words and a concrete example, you're ready for the exam. If you can't — that's exactly where to focus. Start with the core definitions, trace the connections, and know at least one real example for every major concept.`,
     coreConcepts: [
-      {
-        term: `Core Definitions — ${topic}`,
-        explanation: hasFiles
-          ? `From your uploaded materials (${fileNames}): identify and memorize every bolded term, definition, and named concept. These are the backbone of any exam on ${topic}.`
-          : `The fundamental definitions in ${topic} form the basis of all exam questions. Every named concept, theorem, or framework must be understood precisely — not paraphrased.`,
-        example: `Write out each definition in one sentence without looking. Any you cannot recall from memory = highest priority to review.`,
-      },
-      {
-        term: 'Key Mechanisms & Processes',
-        explanation: `Understand the step-by-step process of how things work in ${topic}. Exams frequently ask you to explain a mechanism, trace a process, or identify what happens at each stage.`,
-        example: 'For each major process: input → what happens → output. Know every step.',
-      },
-      {
-        term: 'Cause & Effect Relationships',
-        explanation: `In ${topic}, understand what causes what. Know the direction of relationships: if X changes, what happens to Y and Z? These appear in both short-answer and multiple choice.`,
-        example: 'For every major concept, identify: (1) what it is caused by, (2) what it causes.',
-      },
-      {
-        term: 'Exceptions & Edge Cases',
-        explanation: `Know where the general rules of ${topic} break down. Exceptions, special cases, and boundary conditions are prime exam material because they test deep understanding vs. surface memorization.`,
-        example: `For each rule or definition, ask: "When does this NOT apply?"`,
-      },
-      {
-        term: 'Comparisons & Contrasts',
-        explanation: `Know how to compare related concepts in ${topic}. Exams frequently ask: "What is the difference between X and Y?" or "Compare approach A to approach B."`,
-        example: 'Build a mental comparison table: X vs Y across dimensions like purpose, mechanism, outcome.',
-      },
+      { term: `Core Definitions — ${topic}`, explanation: hasFiles ? `From your uploaded materials (${fileNames}): every bolded term, definition, and named concept is exam-critical. These form the backbone of all questions on ${topic}.` : `The fundamental definitions in ${topic} form the basis of all exam questions. Every named concept must be understood precisely — not paraphrased.`, example: `Write each definition from memory. Anything you can't recall = top priority.` },
+      { term: 'Mechanisms & Processes', explanation: `Understand step-by-step how things work in ${topic}. Exams ask you to trace a process or explain what happens at each stage — not just name it.`, example: 'For each major process: input → transformation → output. Know every step.' },
+      { term: 'Cause & Effect Chains', explanation: `In ${topic}, understand what causes what. When X changes, what happens to Y? These directional relationships appear constantly in both MC and short answer.`, example: 'For each concept: (1) what causes it, (2) what it causes.' },
+      { term: 'Exceptions & Edge Cases', explanation: `Know where the general rules break down. Exceptions are prime exam material because they reveal deep understanding vs. surface memorization.`, example: `For each rule: "When does this NOT apply?"` },
+      { term: 'Comparisons & Contrasts', explanation: `Know how to distinguish related concepts. Exams test: "What is the difference between X and Y?" and "Compare approach A to B."`, example: 'Mental table: X vs Y across definition, mechanism, outcome.' },
     ],
     cheatSheet: [
-      `${topic} — master all named concepts, definitions, and terminology`,
-      'Know every definition precisely — paraphrasing costs marks',
-      'Identify cause-and-effect relationships between all major concepts',
-      'Know step-by-step processes and mechanisms (not just outcomes)',
-      'Learn exceptions and edge cases for all major rules',
-      'Be able to compare similar concepts (know what makes each unique)',
-      hasFiles ? `From ${fileNames}: extract all bolded terms and numbered lists` : 'Review all bolded terms and numbered/bulleted lists in your notes',
-      'Know any real-world applications or case studies covered in class',
-      'Review all diagrams and figures — know every labeled component',
-      'Any formula or equation introduced = must know when and how to apply it',
+      `${topic} — master all named concepts, exact definitions, and core terminology`,
+      'Know every definition precisely — paraphrasing loses marks on precise questions',
+      'Identify all cause-and-effect relationships between major concepts',
+      'Know the step-by-step mechanism/process for every major process covered',
+      'Learn exceptions and edge cases for every major rule',
+      'Be able to compare and contrast similar concepts (what makes each unique)',
+      hasFiles ? `From ${fileNames}: extract all bolded terms, numbered lists, and italicized definitions` : 'Review all bolded terms and numbered/bulleted lists in your notes',
+      'Know all real-world applications and case studies covered in lectures',
+      'Any diagram or figure introduced = know every labeled component',
+      'Any formula or equation = know when to use it, what variables mean, units',
     ],
     formulas: [],
     workedExamples: [],
     likelyQuestions: [
-      { question: `Define the core concepts of ${topic} and explain how they relate to each other`, answer: `Start with precise definitions from your notes. Then explain the relationships: how does concept A lead to or interact with concept B? Use specific terminology throughout.` },
-      { question: `Explain the mechanism/process of [main process in ${topic}]`, answer: `Walk through each stage in order. Name the inputs, what happens at each step, and the outputs. Identify what can go wrong at each stage and why.` },
-      { question: `What are the key differences between the main approaches/types in ${topic}?`, answer: `Compare them across: definition, mechanism, conditions for use, advantages, disadvantages. Use a structured comparison.` },
-      { question: `Apply the concepts of ${topic} to the following scenario: [novel scenario]`, answer: `Identify which concepts apply, explain how they apply step by step, and state the predicted outcome with reasoning.` },
-      { question: `What are the most common misconceptions about ${topic} and what is the correct understanding?`, answer: `Address each misconception directly: state the wrong belief, explain WHY it is wrong, and provide the correct understanding with evidence.` },
+      { question: `Define the core concepts of ${topic} and explain how they relate to each other`, answer: `Use precise definitions from your materials. Explain the relationships: how does concept A lead to or affect concept B? Use specific terminology and at least one concrete example for each concept.` },
+      { question: `Explain the main mechanism or process in ${topic} step by step`, answer: `Walk through each stage in order. Name the inputs, what happens at each step, and the outputs. Identify what can fail at each stage and why.` },
+      { question: `What are the key differences between the main approaches or types in ${topic}?`, answer: `Compare across: definition, mechanism, conditions for use, advantages, disadvantages. Use a structured comparison covering at least 3 dimensions.` },
+      { question: `Apply the concepts of ${topic} to a novel scenario`, answer: `Identify which concepts apply, explain how they apply step by step, state the predicted outcome with reasoning grounded in the definitions.` },
+      { question: `What are the most common misconceptions about ${topic}?`, answer: `Address each wrong belief directly: state the misconception, explain why it's wrong, provide the correct understanding with evidence from the subject matter.` },
     ],
     misconceptions: [
-      { myth: 'Memorizing definitions is enough', reality: 'Exams test application and relationships. You must understand HOW and WHY, not just WHAT.' },
-      { myth: 'If you understand it in class, you can reproduce it on an exam', reality: "Understanding is not the same as recall. Test yourself by writing out concepts from memory — if you can't, you don't know it." },
-      { myth: 'Exceptions are minor details', reality: 'Exceptions are frequently tested because they reveal whether you truly understand a concept vs. just memorized the general rule.' },
-      { myth: 'Paraphrasing definitions is fine', reality: 'Technical definitions often have precise meanings where word choice matters. Learn the exact wording.' },
+      { myth: 'Memorizing definitions is sufficient preparation', reality: 'Exams test application and causal reasoning. You must explain HOW and WHY, not just WHAT things are called.' },
+      { myth: 'Understanding in class = able to reproduce on an exam', reality: "Comprehension and recall are different skills. Test yourself: close your notes and write out each concept. Whatever you can't reproduce = study that." },
+      { myth: 'Exceptions are minor footnotes', reality: 'Exceptions are frequently tested because they reveal whether you understand the rule deeply or just memorized the surface pattern.' },
+      { myth: 'Paraphrasing definitions is acceptable', reality: 'Technical definitions have precise meanings where specific word choice matters. Know the exact formulation.' },
     ],
     flashcards: [
-      { front: `What is the central concept of ${topic}?`, back: 'Review your notes for the primary definition and mechanism.' },
-      { front: `What causes [main process in ${topic}]?`, back: 'Identify the inputs, triggers, and preconditions from your materials.' },
-      { front: `What are the main types/categories in ${topic}?`, back: 'List each type with its defining characteristics.' },
-      { front: `What are the exceptions to the main rules of ${topic}?`, back: 'Know at least 2-3 exceptions and what makes them special cases.' },
-      { front: `How do you compare [Concept A] vs [Concept B] in ${topic}?`, back: 'Compare by: definition, mechanism, conditions, outcomes.' },
+      { front: `What is the central definition of the main concept in ${topic}?`, back: 'State the precise definition with all qualifying conditions.' },
+      { front: `What causes the primary process in ${topic}?`, back: 'Inputs, triggers, and preconditions — be specific.' },
+      { front: `What are the main types or categories in ${topic}?`, back: 'List each with its defining characteristic and how to distinguish it.' },
+      { front: `What are the key exceptions to the main rules in ${topic}?`, back: 'Name the exception, state the condition that triggers it, explain why the normal rule fails.' },
+      { front: `How do you compare [Concept A] vs [Concept B] in ${topic}?`, back: 'Compare by: definition, mechanism, conditions, outcomes — at least 3 dimensions.' },
     ],
-    summary: `${topic} — focus on precise definitions, mechanisms, cause-effect relationships, and exceptions. ${hasFiles ? `Your uploaded materials (${fileNames}) are your primary source — extract all named concepts, processes, and rules directly from them.` : 'Pull content directly from your lecture notes and course materials.'}`,
+    summary: `${topic} — the critical content is: precise definitions, causal mechanisms, cause-effect chains, and exceptions. ${hasFiles ? `Pull directly from ${fileNames}.` : 'Use your lecture notes and course materials as primary source.'}`,
   }
 }
 
-// ─── Color / style constants ───────────────────────────────────────────────────
+// ─── Constants ─────────────────────────────────────────────────────────────────
 const BG = '#080a0e'
-const CARD = 'rgba(255,255,255,0.04)'
-const BORDER = '1px solid rgba(255,255,255,0.08)'
-const SCENE_LABEL = { fontSize: 9, color: '#3b82f6', letterSpacing: '0.2em', textTransform: 'uppercase', fontWeight: 700 }
-const HEADING = { color: '#fff', fontWeight: 900, letterSpacing: '-0.04em' }
-const BODY = { color: 'rgba(255,255,255,0.55)' }
 const BLUE = '#3b82f6'
 const CYAN = '#06b6d4'
-const DIVIDER = '1px solid rgba(255,255,255,0.06)'
+const VIOLET = '#8b5cf6'
+const AMBER = '#f59e0b'
+const RED = '#ef4444'
+const GREEN = '#34d399'
+const ease = [0.16, 1, 0.3, 1]
 
-const cardStyle = {
-  background: CARD,
-  border: BORDER,
-  borderRadius: 16,
-  padding: '20px 20px',
-}
+const CONCEPT_ACCENTS = [BLUE, CYAN, VIOLET, AMBER, GREEN, '#f43f5e', '#ec4899', '#10b981']
 
 const LOADING_STEPS = [
   'Reading your materials...',
   'Extracting key content...',
   'Building cheat sheet...',
-  'Compiling your study guide...',
+  'Compiling your guide...',
 ]
 
-const STUDY_PLAN_DURATION = 60
+// ─── Sub-components ────────────────────────────────────────────────────────────
+
+function ScanSection({ scene, title, accent = BLUE, children, delay = 0 }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 28 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: '-40px' }}
+      transition={{ duration: 0.55, ease, delay }}
+      style={{ marginBottom: 48 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 24 }}>
+        <div style={{
+          fontSize: 9, fontWeight: 900, color: accent,
+          letterSpacing: '0.18em', padding: '4px 10px',
+          border: `1px solid ${accent}40`, borderRadius: 4,
+          fontFamily: 'ui-monospace, monospace', flexShrink: 0,
+          background: `${accent}08`,
+        }}>{scene}</div>
+        <div style={{ flex: 1, height: 1, background: `linear-gradient(90deg, ${accent}35, transparent)` }} />
+        <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: '0.22em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.35)', flexShrink: 0 }}>
+          {title}
+        </div>
+      </div>
+      {children}
+    </motion.div>
+  )
+}
+
+function ConceptCard({ concept, index }) {
+  const [open, setOpen] = useState(false)
+  const accent = CONCEPT_ACCENTS[index % CONCEPT_ACCENTS.length]
+  const text = concept.explanation || concept.definition || ''
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true }}
+      transition={{ delay: index * 0.05, ease }}
+      whileHover={!open ? { y: -3 } : {}}
+      onClick={() => setOpen(o => !o)}
+      style={{
+        background: 'rgba(255,255,255,0.03)',
+        border: `1px solid rgba(255,255,255,0.07)`,
+        borderTop: `2px solid ${accent}`,
+        borderRadius: 14, padding: '20px',
+        cursor: 'pointer', transition: 'box-shadow 0.25s',
+        boxShadow: open ? `0 0 0 1px ${accent}30, 0 8px 32px ${accent}10` : 'none',
+      }}>
+      <div style={{ fontSize: 9, fontWeight: 900, color: `${accent}70`, letterSpacing: '0.22em', fontFamily: 'monospace', marginBottom: 10 }}>
+        CONCEPT {String(index + 1).padStart(2, '0')}
+      </div>
+      <div style={{ fontSize: 15, fontWeight: 900, color: 'white', letterSpacing: '-0.02em', lineHeight: 1.25, marginBottom: 10 }}>
+        {concept.term || concept.title}
+      </div>
+      <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', lineHeight: 1.65, margin: 0 }}>
+        {open ? text : text.slice(0, 110) + (text.length > 110 ? '…' : '')}
+      </p>
+      <AnimatePresence>
+        {open && concept.example && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.28 }}
+            style={{ overflow: 'hidden' }}>
+            <div style={{ marginTop: 12, padding: '10px 14px', background: `${accent}09`, border: `1px solid ${accent}20`, borderRadius: 8, fontSize: 12, color: 'rgba(255,255,255,0.55)', fontStyle: 'italic', lineHeight: 1.6 }}>
+              ↳ {concept.example}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      <div style={{ marginTop: 12, fontSize: 9, fontWeight: 800, color: `${accent}50`, letterSpacing: '0.15em', fontFamily: 'monospace' }}>
+        {open ? '▲ COLLAPSE' : '▼ EXPAND'}
+      </div>
+    </motion.div>
+  )
+}
+
+function ExamQuestionCard({ question, index }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: -16 }}
+      whileInView={{ opacity: 1, x: 0 }}
+      viewport={{ once: true }}
+      transition={{ delay: index * 0.06, ease }}
+      style={{ borderRadius: 12, overflow: 'hidden' }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{
+          width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 14,
+          padding: '14px 18px',
+          background: open ? 'rgba(244,63,94,0.07)' : 'rgba(255,255,255,0.03)',
+          border: '1px solid rgba(255,255,255,0.07)',
+          borderLeft: `3px solid ${open ? RED : 'rgba(244,63,94,0.4)'}`,
+          borderRadius: 12, cursor: 'pointer', transition: 'all 0.2s',
+        }}>
+        <div style={{ flexShrink: 0, textAlign: 'center' }}>
+          <div style={{ fontSize: 9, fontWeight: 900, color: RED, letterSpacing: '0.1em', fontFamily: 'monospace' }}>Q</div>
+          <div style={{ fontSize: 15, fontWeight: 900, color: RED, fontFamily: 'monospace', lineHeight: 1 }}>{String(index + 1).padStart(2, '0')}</div>
+        </div>
+        <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.85)', lineHeight: 1.5 }}>{question.question}</span>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.22)" strokeWidth={2.5}
+          style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.25s', flexShrink: 0 }}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.3 }}
+            style={{ overflow: 'hidden' }}>
+            <div style={{ padding: '18px 18px 18px 62px', background: 'rgba(244,63,94,0.04)', borderLeft: '1px solid rgba(255,255,255,0.05)', borderRight: '1px solid rgba(255,255,255,0.05)', borderBottom: '1px solid rgba(255,255,255,0.05)', borderBottomLeftRadius: 12, borderBottomRightRadius: 12 }}>
+              <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.2em', color: 'rgba(244,63,94,0.5)', fontFamily: 'monospace', marginBottom: 10 }}>ANSWER</div>
+              <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.72)', lineHeight: 1.85, margin: 0 }}>{question.answer}</p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
+  )
+}
+
+function LoadingRing({ size, color, duration, reverse = false, offset = 0 }) {
+  return (
+    <>
+      <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}@keyframes spin-r{from{transform:rotate(0deg)}to{transform:rotate(-360deg)}}`}</style>
+      <div style={{
+        position: 'absolute', top: offset, left: offset, right: offset, bottom: offset,
+        width: size - offset * 2, height: size - offset * 2,
+        borderRadius: '50%', border: `2px solid transparent`,
+        borderTopColor: color, borderRightColor: `${color}33`,
+        animation: `${reverse ? 'spin-r' : 'spin'} ${duration}s linear infinite`,
+      }} />
+    </>
+  )
+}
+
+function QuizCard({ question, index, total, showAnswer, onReveal, onGrade }) {
+  const pct = Math.round((index / total) * 100)
+  return (
+    <div>
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+          <span style={{ fontSize: 11, color: BLUE, fontWeight: 700 }}>Question {index + 1} / {total}</span>
+          <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>{pct}%</span>
+        </div>
+        <div style={{ height: 3, background: 'rgba(255,255,255,0.07)', borderRadius: 2 }}>
+          <div style={{ height: '100%', width: `${pct}%`, background: `linear-gradient(90deg,${BLUE},${CYAN})`, borderRadius: 2, transition: 'width 0.4s ease' }} />
+        </div>
+      </div>
+      <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: '18px', marginBottom: 14 }}>
+        <p style={{ color: '#fff', fontWeight: 700, fontSize: 15, lineHeight: 1.6, margin: 0 }}>{question.question}</p>
+      </div>
+      {!showAnswer ? (
+        <button onClick={onReveal} style={{ width: '100%', padding: '12px 0', borderRadius: 10, fontSize: 13, fontWeight: 800, background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.6)', border: '1px solid rgba(255,255,255,0.08)', cursor: 'pointer', letterSpacing: '0.05em' }}>
+          Reveal Answer
+        </button>
+      ) : (
+        <div>
+          <div style={{ padding: '14px 16px', background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.18)', borderRadius: 10, marginBottom: 14 }}>
+            <p style={{ color: 'rgba(255,255,255,0.75)', fontSize: 13, lineHeight: 1.7, margin: 0 }}>{question.answer}</p>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {[['got', GREEN, '✓ Got it'], ['almost', AMBER, '~ Almost'], ['missed', RED, '✕ Missed']].map(([g, c, label]) => (
+              <button key={g} onClick={() => onGrade(g)} style={{ flex: 1, padding: '10px 0', borderRadius: 10, fontSize: 12, fontWeight: 800, background: `${c}14`, color: c, border: `1px solid ${c}30`, cursor: 'pointer' }}>{label}</button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function QuizResults({ answers, questions, onRetry }) {
+  const got = answers.filter(a => a === 'got').length
+  const almost = answers.filter(a => a === 'almost').length
+  const missed = answers.filter(a => a === 'missed').length
+  const score = Math.round(((got + almost * 0.5) / answers.length) * 100)
+  return (
+    <div style={{ textAlign: 'center', padding: '20px 0' }}>
+      <div style={{ fontSize: 48, fontWeight: 900, color: score >= 80 ? GREEN : score >= 60 ? AMBER : RED, letterSpacing: '-0.04em', marginBottom: 8 }}>{score}%</div>
+      <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginBottom: 20 }}>
+        <span style={{ fontSize: 12, color: GREEN }}>✓ {got} correct</span>
+        <span style={{ fontSize: 12, color: AMBER }}>~ {almost} close</span>
+        <span style={{ fontSize: 12, color: RED }}>✕ {missed} missed</span>
+      </div>
+      <button onClick={onRetry} style={{ padding: '10px 24px', borderRadius: 10, fontSize: 12, fontWeight: 800, background: `linear-gradient(135deg,${BLUE},${CYAN})`, color: '#fff', border: 'none', cursor: 'pointer' }}>Retry Quiz</button>
+    </div>
+  )
+}
+
+function FlashcardOverlay({ concepts, order, index, flipped, onFlip, onPrev, onNext, onShuffle, onClose }) {
+  const c = concepts[order[index]]
+  if (!c) return null
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.9)', zIndex: 200, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+      <div style={{ position: 'absolute', top: 24, right: 24 }}>
+        <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10, padding: '8px 16px', color: 'rgba(255,255,255,0.5)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>✕ Close</button>
+      </div>
+      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginBottom: 24, letterSpacing: '0.15em' }}>{index + 1} / {order.length}</div>
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={`${index}-${flipped}`}
+          initial={{ rotateY: 90, opacity: 0 }}
+          animate={{ rotateY: 0, opacity: 1 }}
+          exit={{ rotateY: -90, opacity: 0 }}
+          transition={{ duration: 0.3 }}
+          onClick={onFlip}
+          style={{
+            width: '100%', maxWidth: 560, minHeight: 260,
+            background: flipped ? 'rgba(59,130,246,0.08)' : 'rgba(255,255,255,0.04)',
+            border: flipped ? '1px solid rgba(59,130,246,0.25)' : '1px solid rgba(255,255,255,0.08)',
+            borderRadius: 20, padding: '40px 36px',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer', textAlign: 'center',
+          }}>
+          <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.2em', color: flipped ? BLUE : 'rgba(255,255,255,0.25)', marginBottom: 20, textTransform: 'uppercase' }}>
+            {flipped ? 'BACK — Explanation' : 'FRONT — Term'}
+          </div>
+          <p style={{ fontSize: flipped ? 14 : 20, fontWeight: flipped ? 400 : 900, color: 'white', lineHeight: flipped ? 1.7 : 1.2, margin: 0, letterSpacing: flipped ? 0 : '-0.02em' }}>
+            {flipped ? (c.explanation || c.definition) : (c.term || c.title)}
+          </p>
+          {flipped && c.example && (
+            <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 16, fontStyle: 'italic', lineHeight: 1.6 }}>↳ {c.example}</p>
+          )}
+          <div style={{ marginTop: 24, fontSize: 10, color: 'rgba(255,255,255,0.2)', letterSpacing: '0.1em' }}>TAP TO FLIP</div>
+        </motion.div>
+      </AnimatePresence>
+      <div style={{ display: 'flex', gap: 12, marginTop: 28, alignItems: 'center' }}>
+        <button onClick={onPrev} disabled={index === 0} style={{ padding: '10px 20px', borderRadius: 10, fontSize: 13, fontWeight: 700, background: 'rgba(255,255,255,0.06)', color: index === 0 ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.6)', border: '1px solid rgba(255,255,255,0.08)', cursor: index === 0 ? 'default' : 'pointer' }}>←</button>
+        <button onClick={onShuffle} style={{ padding: '10px 20px', borderRadius: 10, fontSize: 12, fontWeight: 700, background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.08)', cursor: 'pointer' }}>Shuffle</button>
+        <button onClick={onNext} disabled={index === order.length - 1} style={{ padding: '10px 20px', borderRadius: 10, fontSize: 13, fontWeight: 700, background: 'rgba(255,255,255,0.06)', color: index === order.length - 1 ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.6)', border: '1px solid rgba(255,255,255,0.08)', cursor: index === order.length - 1 ? 'default' : 'pointer' }}>→</button>
+      </div>
+    </div>
+  )
+}
 
 // ─── Main Component ────────────────────────────────────────────────────────────
 export default function ClutchMode() {
   const location = useLocation()
   const { courses } = useCourses()
-  const { sessions, sessionCount, addSession } = useSessions()
+  const { sessions, addSession } = useSessions()
   const preload = location.state || {}
 
-  // ── Core flow state
-  const [step, setStep] = useState('input') // 'input' | 'loading' | 'result'
+  const [step, setStep] = useState('input')
   const [selectedCourseId, setSelectedCourseId] = useState(preload.courseId || '')
   const [topic, setTopic] = useState('')
   const [courseLevel, setCourseLevel] = useState('undergraduate')
@@ -138,181 +350,67 @@ export default function ClutchMode() {
   const [isDragging, setIsDragging] = useState(false)
   const [result, setResult] = useState(null)
   const [loadingStep, setLoadingStep] = useState(0)
-
-  // ── Binary file manual input
   const [binaryFileName, setBinaryFileName] = useState(null)
   const [binaryPasteText, setBinaryPasteText] = useState('')
   const [showBinaryModal, setShowBinaryModal] = useState(false)
-
-  // ── Quiz state
   const [quizActive, setQuizActive] = useState(false)
   const [quizIndex, setQuizIndex] = useState(0)
-  const [quizAnswers, setQuizAnswers] = useState([]) // 'got' | 'almost' | 'missed'
+  const [quizAnswers, setQuizAnswers] = useState([])
   const [showQuizAnswer, setShowQuizAnswer] = useState(false)
   const [quizFinished, setQuizFinished] = useState(false)
-
-  // ── Flashcard state
   const [flashcardActive, setFlashcardActive] = useState(false)
   const [flashcardIndex, setFlashcardIndex] = useState(0)
   const [flashcardFlipped, setFlashcardFlipped] = useState(false)
   const [flashcardOrder, setFlashcardOrder] = useState([])
-
-  // ── Session history state
   const [sessionsOpen, setSessionsOpen] = useState(false)
   const [sessionSaved, setSessionSaved] = useState(false)
 
-  // ── Expanded concept accordion
-  const [activeConceptIdx, setActiveConceptIdx] = useState(null)
-
-  // ── Timer
-  const [timerRunning, setTimerRunning] = useState(false)
-  const [secondsLeft, setSecondsLeft] = useState(STUDY_PLAN_DURATION * 60)
-  const [currentPhase, setCurrentPhase] = useState(0)
-
-  const timerRef = useRef(null)
   const loadingRef = useRef(null)
   const fileInputRef = useRef()
+  const timerRef = useRef(null)
 
   const selectedCourse = courses.find(c => c.id === selectedCourseId)
   const courseName = selectedCourse?.name || preload.courseName || ''
   const courseId = selectedCourse?.id || preload.courseId || ''
 
-  // ── Pre-load course materials from navigation state
   useEffect(() => {
     if (preload.materials?.length > 0 && uploadedFiles.length === 0) {
-      setUploadedFiles(preload.materials.map(m => ({
-        id: m.id || crypto.randomUUID(),
-        name: m.name,
-        content: m.content || '',
-        type: m.type || 'text/plain',
-        fromCourse: true,
-      })))
+      setUploadedFiles(preload.materials.map(m => ({ id: m.id || crypto.randomUUID(), name: m.name, content: m.content || '', type: m.type || 'text/plain', fromCourse: true })))
     }
   }, [])
 
-  // ── Sync course materials when course selector changes
   useEffect(() => {
     if (selectedCourse?.materials?.length > 0) {
-      const courseFiles = selectedCourse.materials.map(m => ({
-        id: m.id,
-        name: m.name,
-        content: m.content || '',
-        type: m.type || 'text/plain',
-        fromCourse: true,
-      }))
-      setUploadedFiles(prev => {
-        const nonCourse = prev.filter(f => !f.fromCourse)
-        return [...courseFiles, ...nonCourse]
-      })
+      const courseFiles = selectedCourse.materials.map(m => ({ id: m.id, name: m.name, content: m.content || '', type: m.type || 'text/plain', fromCourse: true }))
+      setUploadedFiles(prev => [...courseFiles, ...prev.filter(f => !f.fromCourse)])
     } else {
       setUploadedFiles(prev => prev.filter(f => !f.fromCourse))
     }
   }, [selectedCourseId])
 
-  // ── Timer logic
-  useEffect(() => {
-    if (timerRunning && secondsLeft > 0) {
-      timerRef.current = setInterval(() => {
-        setSecondsLeft(prev => {
-          if (prev <= 1) { clearInterval(timerRef.current); setTimerRunning(false); return 0 }
-          return prev - 1
-        })
-      }, 1000)
-      return () => clearInterval(timerRef.current)
-    }
-  }, [timerRunning])
-
-  useEffect(() => {
-    if (!result) return
-    const elapsed = (STUDY_PLAN_DURATION * 60) - secondsLeft
-    const phases = result.studyPlan || []
-    let cumulative = 0
-    for (let i = 0; i < phases.length; i++) {
-      cumulative += (phases[i].minutes || 15) * 60
-      if (elapsed < cumulative) { setCurrentPhase(i); return }
-    }
-    setCurrentPhase(phases.length - 1)
-  }, [secondsLeft, result])
-
-  // ── Loading step cycle
   useEffect(() => {
     if (step !== 'loading') return
     let i = 0
-    loadingRef.current = setInterval(() => {
-      i = (i + 1) % LOADING_STEPS.length
-      setLoadingStep(i)
-    }, 900)
+    loadingRef.current = setInterval(() => { i = (i + 1) % LOADING_STEPS.length; setLoadingStep(i) }, 900)
     return () => clearInterval(loadingRef.current)
   }, [step])
 
-
-  // ── Flashcard order init
   useEffect(() => {
-    if (result?.coreConcepts?.length > 0) {
-      setFlashcardOrder(result.coreConcepts.map((_, i) => i))
-    }
+    if (result?.coreConcepts?.length > 0) setFlashcardOrder(result.coreConcepts.map((_, i) => i))
   }, [result])
 
-  const formatTime = (secs) => {
-    const m = Math.floor(secs / 60)
-    const s = secs % 60
-    return `${m}:${s.toString().padStart(2, '0')}`
-  }
-
-  const timerPercent = ((STUDY_PLAN_DURATION * 60 - secondsLeft) / (STUDY_PLAN_DURATION * 60)) * 100
-  const circumference = 2 * Math.PI * 54
-
-  // ── File reading
   const handleFileRead = useCallback((file) => {
     return new Promise((resolve) => {
       const name = file.name.toLowerCase()
       const isBinary = name.endsWith('.pptx') || name.endsWith('.ppt') || name.endsWith('.docx') || name.endsWith('.doc')
       const isPDF = name.endsWith('.pdf') || file.type === 'application/pdf'
-
-      if (isBinary) {
-        // Show modal for binary formats
-        setBinaryFileName(file.name)
-        setShowBinaryModal(true)
-        // Resolve with placeholder; user can paste text via modal
-        resolve({
-          id: crypto.randomUUID(),
-          name: file.name,
-          content: '',
-          type: file.type,
-          fromCourse: false,
-          needsPaste: true,
-        })
-        return
-      }
-
+      if (isBinary) { setBinaryFileName(file.name); setShowBinaryModal(true); resolve({ id: crypto.randomUUID(), name: file.name, content: '', type: file.type, fromCourse: false, needsPaste: true }); return }
       if (isPDF) {
-        extractPDFText(file)
-          .then(text => resolve({
-            id: crypto.randomUUID(),
-            name: file.name,
-            content: text,
-            type: file.type,
-            fromCourse: false,
-          }))
-          .catch(() => resolve({
-            id: crypto.randomUUID(),
-            name: file.name,
-            content: '',
-            type: file.type,
-            fromCourse: false,
-          }))
+        extractPDFText(file).then(text => resolve({ id: crypto.randomUUID(), name: file.name, content: text, type: file.type, fromCourse: false })).catch(() => resolve({ id: crypto.randomUUID(), name: file.name, content: '', type: file.type, fromCourse: false }))
         return
       }
-
-      // .txt, .md and others
       const reader = new FileReader()
-      reader.onload = (e) => resolve({
-        id: crypto.randomUUID(),
-        name: file.name,
-        content: e.target.result,
-        type: file.type,
-        fromCourse: false,
-      })
+      reader.onload = (e) => resolve({ id: crypto.randomUUID(), name: file.name, content: e.target.result, type: file.type, fromCourse: false })
       reader.onerror = () => resolve({ id: crypto.randomUUID(), name: file.name, content: '', type: file.type, fromCourse: false })
       reader.readAsText(file)
     })
@@ -323,1208 +421,532 @@ export default function ClutchMode() {
     setUploadedFiles(prev => [...prev, ...parsed.filter(f => !prev.some(p => p.name === f.name))])
   }, [handleFileRead])
 
-  const handleDrop = useCallback((e) => {
-    e.preventDefault()
-    setIsDragging(false)
-    handleFiles(e.dataTransfer.files)
-  }, [handleFiles])
-
+  const handleDrop = useCallback((e) => { e.preventDefault(); setIsDragging(false); handleFiles(e.dataTransfer.files) }, [handleFiles])
   const handleDragOver = (e) => { e.preventDefault(); setIsDragging(true) }
   const handleDragLeave = () => setIsDragging(false)
   const removeFile = (id) => setUploadedFiles(prev => prev.filter(f => f.id !== id))
 
   const saveBinaryPaste = () => {
-    setUploadedFiles(prev => prev.map(f =>
-      f.name === binaryFileName ? { ...f, content: binaryPasteText, needsPaste: false } : f
-    ))
-    setBinaryPasteText('')
-    setBinaryFileName(null)
-    setShowBinaryModal(false)
+    setUploadedFiles(prev => prev.map(f => f.name === binaryFileName ? { ...f, content: binaryPasteText, needsPaste: false } : f))
+    setBinaryPasteText(''); setBinaryFileName(null); setShowBinaryModal(false)
   }
 
-  // ── Main generate
   const generate = async () => {
     if (!topic.trim() && uploadedFiles.length === 0) return
-    setStep('loading')
-    setLoadingStep(0)
-
+    setStep('loading'); setLoadingStep(0)
     const files = uploadedFiles.map(f => ({ name: f.name, type: f.type, content: (f.content || '').slice(0, 8000) }))
-    const courseCtx = selectedCourse
-      ? { name: selectedCourse.name, code: selectedCourse.code, professor: selectedCourse.professor }
-      : preload.courseName
-        ? { name: preload.courseName, code: preload.courseCode }
-        : null
-
+    const courseCtx = selectedCourse ? { name: selectedCourse.name, code: selectedCourse.code, professor: selectedCourse.professor } : preload.courseName ? { name: preload.courseName, code: preload.courseCode } : null
     const effectiveTopic = topic || selectedCourse?.name || preload.courseName || 'General Study'
     const fileContext = files.map(f => `--- FILE: ${f.name} ---\n${f.content}`).join('\n\n')
-
     let data = null
     try {
       setLoadingStep(1)
-      const prompt = `You are an expert university tutor creating a CONTENT CHEAT SHEET. Your job is to give the student the ACTUAL SUBJECT MATTER CONTENT to study — not study tips or advice. Everything should be direct, factual, and exam-ready.
-
-Topic: "${effectiveTopic}"
+      const prompt = `You are an expert university tutor. Create a complete, content-rich study guide for: "${effectiveTopic}"
 ${courseCtx ? `Course: ${courseCtx.name} (${courseCtx.code || ''})` : ''}
-Exam type: ${examType || 'mixed'}
-Level: ${courseLevel || 'undergraduate'}
-${focusAreas ? `Specific areas to cover: ${focusAreas}` : ''}
-${fileContext ? `\nMATERIALS TO EXTRACT CONTENT FROM:\n${fileContext.slice(0, 10000)}` : ''}
+Exam type: ${examType || 'mixed'} | Level: ${courseLevel || 'undergraduate'}
+${focusAreas ? `Focus: ${focusAreas}` : ''}
+${fileContext ? `\nMATERIALS:\n${fileContext.slice(0, 10000)}` : ''}
 
-Return ONLY valid JSON with this exact structure:
+Return ONLY valid JSON:
 {
-  "coreConcepts": [
-    { "term": "string", "explanation": "string (thorough, specific — actual content not advice)", "example": "string (concrete example from the subject)" }
-  ],
-  "cheatSheet": [
-    "Direct fact, rule, formula, or definition to memorize — be specific and concrete"
-  ],
-  "formulas": [
-    { "name": "string", "formula": "string", "whenToUse": "string", "variables": "string" }
-  ],
-  "workedExamples": [
-    { "problem": "string", "solution": "string (step-by-step, show all work)" }
-  ],
-  "likelyQuestions": [
-    { "question": "string", "answer": "string (complete, detailed answer with actual content)" }
-  ],
-  "misconceptions": [
-    { "myth": "string", "reality": "string" }
-  ],
-  "flashcards": [
-    { "front": "string", "back": "string" }
-  ],
-  "summary": "string (2-3 sentence overview of the most critical content)"
+  "plainEnglish": "string — 3-4 paragraphs explaining the ENTIRE topic conversationally, as if to a smart friend. Use analogies. Explain the big picture FIRST, then the key relationships. No bullet points — flowing paragraphs only. Be specific to the actual subject matter.",
+  "coreConcepts": [{ "term": "string", "explanation": "string — thorough, specific content (not advice)", "example": "string — concrete example" }],
+  "cheatSheet": ["string — specific fact, rule, definition, or relationship to memorize"],
+  "formulas": [{ "name": "string", "formula": "string", "whenToUse": "string", "variables": "string" }],
+  "workedExamples": [{ "problem": "string", "solution": "string — full step-by-step" }],
+  "likelyQuestions": [{ "question": "string", "answer": "string — thorough answer with actual content" }],
+  "misconceptions": [{ "myth": "string", "reality": "string" }],
+  "flashcards": [{ "front": "string", "back": "string" }],
+  "summary": "string"
 }
 
-CRITICAL RULES — these are non-negotiable:
-- coreConcepts: 6-10 concepts. explanation must be ACTUAL CONTENT (definitions, mechanisms, rules) — not study advice
-- cheatSheet: 10-20 bullet points of SPECIFIC FACTS to memorize (dates, rules, definitions, key relationships, constants, steps)
-- formulas: ALL relevant formulas/equations with variables defined. If no formulas exist, use []
-- workedExamples: 2-4 complete worked problems with full solutions. If no calculations needed, use []
-- likelyQuestions: 5-8 exam questions with thorough answers containing ACTUAL SUBJECT CONTENT
-- misconceptions: 3-5 specific wrong beliefs students have about this topic with correct explanations
-- flashcards: 10-15 term/definition pairs from the actual content
-- Pull directly from provided materials when available
-- Be SPECIFIC — use real terminology, real numbers, real mechanisms from the subject`
+RULES:
+- plainEnglish: conversational, use analogies, explain WHY things work the way they do — 3-4 paragraphs
+- coreConcepts: 6-10 concepts with thorough CONTENT explanations
+- cheatSheet: 12-20 specific facts from the ACTUAL subject matter
+- formulas: all relevant formulas with full variable definitions. [] if none
+- workedExamples: 2-4 full worked problems with all steps shown. [] if not applicable
+- likelyQuestions: 6-8 exam questions with complete, detailed answers
+- misconceptions: 4-6 myth/reality pairs specific to this subject
+- flashcards: 10-15 pairs from actual content
+- Extract directly from provided materials when available
+- Be SPECIFIC — real terminology, real numbers, real mechanisms`
 
       const token = await getAuthToken()
       const res = await fetch('/api/groq', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({
-          model: 'llama-3.3-70b-versatile',
-          messages: [{ role: 'user', content: prompt }],
-          response_format: { type: 'json_object' },
-          temperature: 0.3,
-          max_tokens: 4096,
-        }),
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.3, max_tokens: 4096 }),
       })
       setLoadingStep(2)
-      if (res.status === 429) {
-        const { error } = await res.json().catch(() => ({}))
-        setStep('input')
-        alert(error || 'Daily AI limit reached (30/day). Resets at midnight.')
-        return
-      }
-      if (res.ok) {
-        const json = await res.json()
-        data = JSON.parse(json.choices[0].message.content)
-        setLoadingStep(3)
-      }
-    } catch (e) {
-      console.warn('Groq generate error, using fallback:', e)
-    }
+      if (res.status === 429) { const { error } = await res.json().catch(() => ({})); setStep('input'); alert(error || 'Daily AI limit reached. Resets at midnight.'); return }
+      if (res.ok) { const json = await res.json(); data = JSON.parse(json.choices[0].message.content); setLoadingStep(3) }
+    } catch (e) { console.warn('Groq error, using fallback:', e) }
 
-    if (!data) {
-      await new Promise(r => setTimeout(r, 1800))
-      data = generateFallback(effectiveTopic, uploadedFiles)
-    }
-
-    setResult(data)
-    setStep('result')
-    setSessionSaved(false)
-
-    // Save to session history
-    addSession({
-      courseId,
-      courseName,
-      topic: topic || selectedCourse?.name || 'Your Course',
-      filesUsed: uploadedFiles.map(f => f.name),
-      result: data,
-    })
+    if (!data) { await new Promise(r => setTimeout(r, 1800)); data = generateFallback(effectiveTopic, uploadedFiles) }
+    setResult(data); setStep('result'); setSessionSaved(false)
+    addSession({ courseId, courseName, topic: topic || selectedCourse?.name || 'Your Course', filesUsed: uploadedFiles.map(f => f.name), result: data })
     setSessionSaved(true)
-
-    // Reset quiz/flashcard states for new result
-    setQuizActive(false)
-    setQuizIndex(0)
-    setQuizAnswers([])
-    setShowQuizAnswer(false)
-    setQuizFinished(false)
-    setFlashcardActive(false)
-    setFlashcardIndex(0)
-    setFlashcardFlipped(false)
-    setActiveConceptIdx(null)
+    setQuizActive(false); setQuizIndex(0); setQuizAnswers([]); setShowQuizAnswer(false); setQuizFinished(false)
+    setFlashcardActive(false); setFlashcardIndex(0); setFlashcardFlipped(false)
   }
 
   const resetAll = () => {
-    setStep('input')
-    setResult(null)
-    setTimerRunning(false)
-    clearInterval(timerRef.current)
-    setSecondsLeft(STUDY_PLAN_DURATION * 60)
-    setTopic('')
-    setFocusAreas('')
-    setActiveConceptIdx(null)
-    setQuizActive(false)
-    setQuizFinished(false)
-    setQuizAnswers([])
-    setFlashcardActive(false)
-    setSessionSaved(false)
+    setStep('input'); setResult(null); clearInterval(timerRef.current)
+    setTopic(''); setFocusAreas('')
+    setQuizActive(false); setQuizFinished(false); setQuizAnswers([])
+    setFlashcardActive(false); setSessionSaved(false)
   }
 
   const restoreSession = (session) => {
-    setResult(session.result)
-    setStep('result')
-    setSelectedCourseId(session.courseId || '')
-    setTopic(session.topic || '')
-    setSessionSaved(true)
-    setSessionsOpen(false)
-    setQuizActive(false)
-    setQuizFinished(false)
-    setQuizAnswers([])
+    setResult(session.result); setStep('result')
+    setSelectedCourseId(session.courseId || ''); setTopic(session.topic || '')
+    setSessionSaved(true); setSessionsOpen(false)
+    setQuizActive(false); setQuizFinished(false); setQuizAnswers([])
     setFlashcardActive(false)
-    setActiveConceptIdx(null)
   }
 
-  // ── Quiz actions
-  const startQuiz = () => {
-    setQuizActive(true)
-    setQuizIndex(0)
-    setQuizAnswers([])
-    setShowQuizAnswer(false)
-    setQuizFinished(false)
-  }
-
+  const startQuiz = () => { setQuizActive(true); setQuizIndex(0); setQuizAnswers([]); setShowQuizAnswer(false); setQuizFinished(false) }
   const answerQuiz = (grade) => {
     const newAnswers = [...quizAnswers, grade]
     setQuizAnswers(newAnswers)
-    const questions = result?.likelyQuestions || []
-    if (quizIndex + 1 >= questions.length) {
-      setQuizFinished(true)
-    } else {
-      setQuizIndex(quizIndex + 1)
-      setShowQuizAnswer(false)
-    }
+    if (quizIndex + 1 >= (result?.likelyQuestions || []).length) { setQuizFinished(true) }
+    else { setQuizIndex(quizIndex + 1); setShowQuizAnswer(false) }
   }
-
-  // ── Flashcard actions
-  const openFlashcards = () => {
-    setFlashcardActive(true)
-    setFlashcardIndex(0)
-    setFlashcardFlipped(false)
-    setFlashcardOrder((result?.coreConcepts || []).map((_, i) => i))
-  }
-
+  const openFlashcards = () => { setFlashcardActive(true); setFlashcardIndex(0); setFlashcardFlipped(false); setFlashcardOrder((result?.coreConcepts || []).map((_, i) => i)) }
   const shuffleFlashcards = () => {
     const arr = [...flashcardOrder]
-    for (let i = arr.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [arr[i], arr[j]] = [arr[j], arr[i]]
-    }
-    setFlashcardOrder(arr)
-    setFlashcardIndex(0)
-    setFlashcardFlipped(false)
+    for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1));[arr[i], arr[j]] = [arr[j], arr[i]] }
+    setFlashcardOrder(arr); setFlashcardIndex(0); setFlashcardFlipped(false)
   }
 
   const canGenerate = topic.trim() || uploadedFiles.length > 0 || selectedCourseId
-
   const fileIcon = (type = '', name = '') => {
     if (type.includes('pdf') || name.endsWith('.pdf')) return '📄'
     if (name.endsWith('.pptx') || name.endsWith('.ppt')) return '📊'
     if (name.endsWith('.docx') || name.endsWith('.doc')) return '📝'
-    if (type.includes('video') || name.endsWith('.mp4')) return '🎬'
     return '📋'
   }
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // RENDER
-  // ─────────────────────────────────────────────────────────────────────────────
+  const misconceptionsList = result?.misconceptions || result?.commonMisconceptions || result?.commonMistakes || []
+
+  // ───────────────────────────────────────────────────────────────────────────
   return (
     <div style={{ background: BG, minHeight: '100vh', color: '#fff', fontFamily: 'inherit', position: 'relative' }}>
+      <style>{`
+        @keyframes clutch-pulse { 0%,100%{opacity:0.5} 50%{opacity:1} }
+        @keyframes clutch-scan { 0%{transform:translateX(-100%)} 100%{transform:translateX(400%)} }
+        @keyframes clutch-blink { 0%,100%{opacity:1} 50%{opacity:0} }
+      `}</style>
 
-      {/* ── Binary paste modal */}
+      {/* Binary paste modal */}
       {showBinaryModal && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 100,
-          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
-        }}>
-          <div style={{ ...cardStyle, maxWidth: 520, width: '100%', background: '#111318', border: BORDER }}>
-            <p style={{ ...SCENE_LABEL, marginBottom: 8 }}>Binary Format Detected</p>
-            <h3 style={{ ...HEADING, fontSize: 18, marginBottom: 6 }}>{binaryFileName}</h3>
-            <p style={{ ...BODY, fontSize: 13, marginBottom: 16 }}>
-              Binary format — paste your notes as text below
-            </p>
-            <textarea
-              rows={8}
-              value={binaryPasteText}
-              onChange={e => setBinaryPasteText(e.target.value)}
-              placeholder="Paste the content of your file here..."
-              style={{
-                width: '100%', background: 'rgba(255,255,255,0.05)', border: BORDER,
-                borderRadius: 10, padding: '10px 14px', color: '#fff', fontSize: 13,
-                resize: 'vertical', outline: 'none', boxSizing: 'border-box',
-              }}
-            />
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <div style={{ background: '#0d0f14', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 16, padding: '28px', maxWidth: 500, width: '100%' }}>
+            <div style={{ fontSize: 9, fontWeight: 900, color: AMBER, letterSpacing: '0.2em', marginBottom: 8, fontFamily: 'monospace' }}>BINARY FORMAT</div>
+            <h3 style={{ fontSize: 17, fontWeight: 900, color: 'white', marginBottom: 6 }}>{binaryFileName}</h3>
+            <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', marginBottom: 16 }}>Paste the text content of this file below</p>
+            <textarea rows={7} value={binaryPasteText} onChange={e => setBinaryPasteText(e.target.value)} placeholder="Paste content here..."
+              style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '10px 14px', color: '#fff', fontSize: 13, resize: 'vertical', outline: 'none', boxSizing: 'border-box' }} />
             <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
-              <button onClick={saveBinaryPaste} style={{
-                flex: 1, padding: '10px 0', borderRadius: 10, fontWeight: 800, fontSize: 13,
-                background: `linear-gradient(135deg, ${BLUE}, ${CYAN})`, color: '#fff', border: 'none', cursor: 'pointer',
-              }}>Save Text</button>
-              <button onClick={() => setShowBinaryModal(false)} style={{
-                padding: '10px 18px', borderRadius: 10, fontWeight: 700, fontSize: 13,
-                background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.55)', border: BORDER, cursor: 'pointer',
-              }}>Cancel</button>
+              <button onClick={saveBinaryPaste} style={{ flex: 1, padding: '10px 0', borderRadius: 10, fontWeight: 800, fontSize: 13, background: `linear-gradient(135deg,${BLUE},${CYAN})`, color: '#fff', border: 'none', cursor: 'pointer' }}>Save Text</button>
+              <button onClick={() => setShowBinaryModal(false)} style={{ padding: '10px 18px', borderRadius: 10, fontWeight: 700, fontSize: 13, background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.08)', cursor: 'pointer' }}>Cancel</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ── Flashcard overlay */}
+      {/* Flashcard overlay */}
       {flashcardActive && result?.coreConcepts?.length > 0 && (
-        <FlashcardOverlay
-          concepts={result.coreConcepts}
-          order={flashcardOrder}
-          index={flashcardIndex}
-          flipped={flashcardFlipped}
+        <FlashcardOverlay concepts={result.coreConcepts} order={flashcardOrder} index={flashcardIndex} flipped={flashcardFlipped}
           onFlip={() => setFlashcardFlipped(f => !f)}
           onPrev={() => { setFlashcardIndex(i => Math.max(0, i - 1)); setFlashcardFlipped(false) }}
           onNext={() => { setFlashcardIndex(i => Math.min(flashcardOrder.length - 1, i + 1)); setFlashcardFlipped(false) }}
-          onShuffle={shuffleFlashcards}
-          onClose={() => setFlashcardActive(false)}
-        />
+          onShuffle={shuffleFlashcards} onClose={() => setFlashcardActive(false)} />
       )}
 
-      {/* ── Sessions side panel */}
-      {sessionsOpen && (
-        <div style={{
-          position: 'fixed', top: 0, right: 0, bottom: 0, width: 320, zIndex: 50,
-          background: '#0d1017', borderLeft: BORDER, overflowY: 'auto', padding: 20,
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-            <p style={{ ...SCENE_LABEL }}>Past Sessions</p>
-            <button onClick={() => setSessionsOpen(false)} style={{
-              background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: 18,
-            }}>×</button>
-          </div>
-          {sessions.length === 0 ? (
-            <p style={{ ...BODY, fontSize: 13 }}>No sessions saved yet.</p>
-          ) : sessions.map(s => (
-            <button key={s.id} onClick={() => restoreSession(s)} style={{
-              width: '100%', textAlign: 'left', background: CARD, border: BORDER,
-              borderRadius: 12, padding: '14px 14px', marginBottom: 10, cursor: 'pointer',
-              transition: 'background 0.15s',
-            }}
-            onMouseOver={e => e.currentTarget.style.background = 'rgba(255,255,255,0.07)'}
-            onMouseOut={e => e.currentTarget.style.background = CARD}
-            >
-              <p style={{ color: '#fff', fontWeight: 700, fontSize: 13, marginBottom: 3 }}>
-                {s.topic || 'Untitled'}
-              </p>
-              {s.courseName && (
-                <p style={{ ...BODY, fontSize: 11, marginBottom: 3 }}>{s.courseName}</p>
-              )}
-              <p style={{ color: BLUE, fontSize: 11 }}>
-                {new Date(s.savedAt).toLocaleDateString()} · {s.filesUsed?.length || 0} file{(s.filesUsed?.length || 0) !== 1 ? 's' : ''}
-              </p>
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* ── Main content ── */}
-      <div style={{ maxWidth: 740, margin: '0 auto', padding: '32px 20px 120px' }}>
-
-        {/* ════════════════════════════════════════════════════════
-            SCENE 00 — BRIEFING (input step)
-        ════════════════════════════════════════════════════════ */}
-        {step === 'input' && (
-          <div>
-            <p style={{ ...SCENE_LABEL, marginBottom: 6 }}>Scene 00 — Briefing</p>
-            <h1 style={{ ...HEADING, fontSize: 30, marginBottom: 6 }}>Clutch Mode</h1>
-            <p style={{ ...BODY, fontSize: 14, marginBottom: 28 }}>
-              Upload your materials. The AI teaches you what's on the exam.
-            </p>
-
-            {/* Course selector */}
-            {courses.length > 0 && (
-              <div style={{ ...cardStyle, marginBottom: 16 }}>
-                <p style={{ ...SCENE_LABEL, marginBottom: 12 }}>Course (optional)</p>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                  <button
-                    onClick={() => setSelectedCourseId('')}
-                    style={{
-                      padding: '7px 14px', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer',
-                      background: !selectedCourseId ? 'rgba(255,255,255,0.1)' : 'transparent',
-                      color: !selectedCourseId ? '#fff' : 'rgba(255,255,255,0.45)',
-                      border: `1px solid ${!selectedCourseId ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.08)'}`,
-                      transition: 'all 0.15s',
-                    }}>
-                    General
-                  </button>
-                  {courses.map(c => (
-                    <button key={c.id} onClick={() => setSelectedCourseId(c.id)} style={{
-                      padding: '7px 14px', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer',
-                      background: selectedCourseId === c.id ? `${c.color}18` : 'transparent',
-                      color: selectedCourseId === c.id ? c.color : 'rgba(255,255,255,0.45)',
-                      border: `1px solid ${selectedCourseId === c.id ? c.color + '40' : 'rgba(255,255,255,0.08)'}`,
-                      transition: 'all 0.15s',
-                    }}>
-                      {c.code}
-                    </button>
-                  ))}
-                </div>
-                {selectedCourse?.materials?.length > 0 && (
-                  <p style={{ fontSize: 12, color: '#22c55e', marginTop: 10 }}>
-                    ✓ {selectedCourse.materials.length} file{selectedCourse.materials.length !== 1 ? 's' : ''} from {selectedCourse.code} included
-                  </p>
-                )}
-              </div>
-            )}
-
-            {/* Topic */}
-            <div style={{ ...cardStyle, marginBottom: 16 }}>
-              <p style={{ ...SCENE_LABEL, marginBottom: 10 }}>
-                What is this guide about?
-              </p>
-              <input
-                type="text"
-                value={topic}
-                onChange={e => setTopic(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && canGenerate && generate()}
-                placeholder="e.g., Cell Division, Thermodynamics, Supply & Demand..."
-                style={{
-                  width: '100%', background: 'rgba(255,255,255,0.05)', border: BORDER,
-                  borderRadius: 10, padding: '10px 14px', color: '#fff', fontSize: 14,
-                  outline: 'none', boxSizing: 'border-box',
-                }}
-              />
+      {/* Sessions panel */}
+      <AnimatePresence>
+        {sessionsOpen && (
+          <motion.div initial={{ x: 320 }} animate={{ x: 0 }} exit={{ x: 320 }} transition={{ duration: 0.35, ease }}
+            style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: 300, zIndex: 50, background: '#0a0c10', borderLeft: '1px solid rgba(255,255,255,0.06)', overflowY: 'auto', padding: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+              <span style={{ fontSize: 9, fontWeight: 900, color: BLUE, letterSpacing: '0.2em', fontFamily: 'monospace' }}>PAST SESSIONS</span>
+              <button onClick={() => setSessionsOpen(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.3)', cursor: 'pointer', fontSize: 18 }}>×</button>
             </div>
-
-            {/* File upload zone */}
-            <div style={{ ...cardStyle, marginBottom: 16 }}>
-              <p style={{ ...SCENE_LABEL, marginBottom: 12 }}>
-                Upload Materials
-                <span style={{ color: 'rgba(255,255,255,0.3)', fontWeight: 400, letterSpacing: 0, textTransform: 'none', fontSize: 11, marginLeft: 8 }}>
-                  lecture notes, slides, PDFs
-                </span>
-              </p>
-
-              <input
-                ref={fileInputRef} type="file" multiple
-                accept=".txt,.md,.pdf,.pptx,.docx,.csv,.rtf"
-                style={{ display: 'none' }}
-                onChange={e => handleFiles(e.target.files)}
-              />
-
-              {/* Drop zone */}
-              <div
-                onDrop={handleDrop}
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onClick={() => fileInputRef.current?.click()}
-                style={{
-                  border: `1.5px dashed ${isDragging ? BLUE : 'rgba(255,255,255,0.15)'}`,
-                  borderRadius: 12, padding: '32px 20px', display: 'flex', flexDirection: 'column',
-                  alignItems: 'center', gap: 10, cursor: 'pointer',
-                  background: isDragging ? 'rgba(59,130,246,0.06)' : 'transparent',
-                  transition: 'all 0.2s',
-                }}>
-                <div style={{
-                  width: 44, height: 44, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  background: isDragging ? 'rgba(59,130,246,0.15)' : 'rgba(255,255,255,0.05)', border: BORDER,
-                }}>
-                  <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke={isDragging ? BLUE : 'rgba(255,255,255,0.4)'} strokeWidth={1.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
-                  </svg>
-                </div>
-                <div style={{ textAlign: 'center' }}>
-                  <p style={{ color: isDragging ? BLUE : 'rgba(255,255,255,0.7)', fontWeight: 800, fontSize: 14 }}>
-                    {isDragging ? 'Drop files here' : 'Drag & drop or click to upload'}
-                  </p>
-                  <p style={{ ...BODY, fontSize: 12, marginTop: 2 }}>.txt .md .pdf .pptx .docx</p>
-                </div>
-              </div>
-
-              {/* Uploaded files — film strip style */}
-              {uploadedFiles.length > 0 && (
-                <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {uploadedFiles.map(f => (
-                    <div key={f.id} style={{
-                      display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 10,
-                      background: f.fromCourse ? 'rgba(34,197,94,0.06)' : 'rgba(255,255,255,0.04)',
-                      border: `1px solid ${f.fromCourse ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.06)'}`,
-                    }}>
-                      <span style={{ fontSize: 16, flexShrink: 0 }}>{fileIcon(f.type, f.name)}</span>
-                      <span style={{ flex: 1, fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.75)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {f.name}
-                      </span>
-                      {f.needsPaste && (
-                        <button onClick={() => { setBinaryFileName(f.name); setShowBinaryModal(true) }} style={{
-                          fontSize: 10, fontWeight: 700, color: '#f59e0b', background: 'rgba(245,158,11,0.1)',
-                          border: '1px solid rgba(245,158,11,0.25)', borderRadius: 6, padding: '2px 7px', cursor: 'pointer',
-                        }}>Paste text</button>
-                      )}
-                      {f.fromCourse && selectedCourse && (
-                        <span style={{ fontSize: 10, fontWeight: 700, color: '#22c55e', background: 'rgba(34,197,94,0.1)', borderRadius: 6, padding: '2px 7px' }}>
-                          {selectedCourse.code}
-                        </span>
-                      )}
-                      {!f.fromCourse && (
-                        <button onClick={() => removeFile(f.id)} style={{
-                          width: 24, height: 24, borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          background: 'none', border: 'none', color: 'rgba(255,255,255,0.3)', cursor: 'pointer', flexShrink: 0,
-                        }}>
-                          <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Level + Type */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
-              <div style={cardStyle}>
-                <p style={{ ...SCENE_LABEL, marginBottom: 12 }}>Level</p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-                  {[['highschool', 'High School'], ['undergraduate', 'Undergrad'], ['graduate', 'Graduate']].map(([val, label]) => (
-                    <button key={val} onClick={() => setCourseLevel(val)} style={{
-                      padding: '9px 12px', borderRadius: 10, fontSize: 12, fontWeight: 700, textAlign: 'left', cursor: 'pointer',
-                      background: courseLevel === val ? `linear-gradient(135deg, ${BLUE}, ${CYAN})` : 'rgba(255,255,255,0.05)',
-                      color: courseLevel === val ? '#fff' : 'rgba(255,255,255,0.5)',
-                      border: courseLevel === val ? 'none' : BORDER,
-                      boxShadow: courseLevel === val ? `0 0 12px rgba(59,130,246,0.3)` : 'none',
-                      transition: 'all 0.15s',
-                    }}>{label}</button>
-                  ))}
-                </div>
-              </div>
-              <div style={cardStyle}>
-                <p style={{ ...SCENE_LABEL, marginBottom: 12 }}>Exam Type</p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-                  {[['multiple-choice', 'Multiple Choice'], ['short-answer', 'Short Answer'], ['essay', 'Essay'], ['mixed', 'Mixed']].map(([val, label]) => (
-                    <button key={val} onClick={() => setExamType(val)} style={{
-                      padding: '9px 12px', borderRadius: 10, fontSize: 12, fontWeight: 700, textAlign: 'left', cursor: 'pointer',
-                      background: examType === val ? `linear-gradient(135deg, ${BLUE}, ${CYAN})` : 'rgba(255,255,255,0.05)',
-                      color: examType === val ? '#fff' : 'rgba(255,255,255,0.5)',
-                      border: examType === val ? 'none' : BORDER,
-                      boxShadow: examType === val ? `0 0 12px rgba(59,130,246,0.3)` : 'none',
-                      transition: 'all 0.15s',
-                    }}>{label}</button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Focus areas */}
-            <div style={{ ...cardStyle, marginBottom: 24 }}>
-              <p style={{ ...SCENE_LABEL, marginBottom: 10 }}>
-                What confuses you?
-                <span style={{ color: 'rgba(255,255,255,0.3)', fontWeight: 400, letterSpacing: 0, textTransform: 'none', fontSize: 11, marginLeft: 8 }}>optional</span>
-              </p>
-              <textarea
-                value={focusAreas}
-                onChange={e => setFocusAreas(e.target.value)}
-                rows={2}
-                placeholder="e.g., I don't understand how entropy works..."
-                style={{
-                  width: '100%', background: 'rgba(255,255,255,0.05)', border: BORDER,
-                  borderRadius: 10, padding: '10px 14px', color: '#fff', fontSize: 13,
-                  resize: 'none', outline: 'none', boxSizing: 'border-box',
-                }}
-              />
-            </div>
-
-            {/* CTA */}
-            <button
-              onClick={generate}
-              disabled={!canGenerate}
-              style={{
-                width: '100%', padding: '16px 0', borderRadius: 14, fontSize: 15, fontWeight: 900,
-                background: canGenerate ? `linear-gradient(135deg, ${BLUE}, ${CYAN})` : 'rgba(255,255,255,0.06)',
-                color: canGenerate ? '#fff' : 'rgba(255,255,255,0.25)',
-                border: 'none', cursor: canGenerate ? 'pointer' : 'not-allowed',
-                boxShadow: canGenerate ? `0 0 30px rgba(59,130,246,0.35)` : 'none',
-                letterSpacing: '0.02em', transition: 'all 0.2s',
-              }}>
-              {uploadedFiles.length > 0
-                ? `BEGIN SESSION — ${uploadedFiles.length} FILE${uploadedFiles.length !== 1 ? 'S' : ''} →`
-                : 'BEGIN SESSION →'}
-            </button>
-          </div>
-        )}
-
-        {/* ════════════════════════════════════════════════════════
-            LOADING STATE
-        ════════════════════════════════════════════════════════ */}
-        {step === 'loading' && (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '70vh', gap: 20 }}>
-            {/* Spinner */}
-            <div style={{ position: 'relative', width: 80, height: 80 }}>
-              <LoadingRing size={80} color={BLUE} duration={2} />
-              <LoadingRing size={56} color={CYAN} duration={3} reverse offset={12} />
-              <div style={{
-                position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}>
-                <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke={BLUE} strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-              </div>
-            </div>
-
-            <div style={{ textAlign: 'center' }}>
-              <p style={{ ...SCENE_LABEL, marginBottom: 12 }}>Analyzing Materials</p>
-              <p style={{ ...HEADING, fontSize: 20, marginBottom: 8 }}>
-                {LOADING_STEPS[loadingStep]}
-              </p>
-              <p style={{ ...BODY, fontSize: 13 }}>
-                {uploadedFiles.length > 0
-                  ? `${uploadedFiles.length} file${uploadedFiles.length !== 1 ? 's' : ''} · ${courseName || topic}`
-                  : `Topic: ${topic}`}
-              </p>
-            </div>
-
-            {/* Pulsing dots */}
-            <div style={{ display: 'flex', gap: 8 }}>
-              {LOADING_STEPS.map((_, i) => (
-                <div key={i} style={{
-                  width: 8, height: 8, borderRadius: '50%',
-                  background: i <= loadingStep ? BLUE : 'rgba(255,255,255,0.1)',
-                  transition: 'background 0.3s',
-                }} />
+            {sessions.length === 0 ? <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.3)' }}>No sessions yet.</p>
+              : sessions.map(s => (
+                <button key={s.id} onClick={() => restoreSession(s)}
+                  style={{ width: '100%', textAlign: 'left', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: '14px', marginBottom: 8, cursor: 'pointer', transition: 'background 0.15s' }}
+                  onMouseOver={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
+                  onMouseOut={e => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'}>
+                  <p style={{ color: '#fff', fontWeight: 700, fontSize: 13, marginBottom: 3 }}>{s.topic || 'Untitled'}</p>
+                  {s.courseName && <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: 11, marginBottom: 3 }}>{s.courseName}</p>}
+                  <p style={{ color: BLUE, fontSize: 10 }}>{new Date(s.savedAt).toLocaleDateString()} · {s.filesUsed?.length || 0} files</p>
+                </button>
               ))}
-            </div>
-          </div>
+          </motion.div>
         )}
+      </AnimatePresence>
 
-        {/* ════════════════════════════════════════════════════════
-            RESULTS — Scenes revealed
-        ════════════════════════════════════════════════════════ */}
-        {step === 'result' && result && (
-          <div>
-            {/* Header */}
-            <div style={{ marginBottom: 32 }}>
-              <p style={{ ...SCENE_LABEL, marginBottom: 6 }}>Session Complete</p>
-              <h1 style={{ ...HEADING, fontSize: 26, marginBottom: 4 }}>
-                {topic || courseName || 'Your Study Guide'}
-              </h1>
-              <p style={{ ...BODY, fontSize: 13 }}>
-                {courseName && <span style={{ color: CYAN }}>{courseName} · </span>}
-                {uploadedFiles.length > 0 && `${uploadedFiles.length} file${uploadedFiles.length !== 1 ? 's' : ''} analyzed · `}
-                Guide ready
-              </p>
+      {/* ══════════════════════════════════════════════════════════
+          INPUT
+      ══════════════════════════════════════════════════════════ */}
+      {step === 'input' && (
+        <div style={{ maxWidth: 720, margin: '0 auto', padding: '40px 24px 120px' }}>
+          {/* Hero */}
+          <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease }} style={{ marginBottom: 40 }}>
+            <div style={{ fontSize: 9, fontWeight: 900, color: BLUE, letterSpacing: '0.25em', fontFamily: 'monospace', marginBottom: 12 }}>SCENE 00 — BRIEFING</div>
+            <h1 style={{ fontSize: 'clamp(28px,5vw,44px)', fontWeight: 900, letterSpacing: '-0.045em', color: 'white', margin: 0, lineHeight: 1 }}>Clutch Mode</h1>
+            <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.35)', marginTop: 10 }}>Upload your materials. Get a complete content breakdown to study from directly.</p>
+          </motion.div>
+
+          {/* Course selector */}
+          {courses.length > 0 && (
+            <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1, ease }}
+              style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, padding: '18px', marginBottom: 12 }}>
+              <div style={{ fontSize: 9, fontWeight: 900, color: 'rgba(255,255,255,0.25)', letterSpacing: '0.2em', fontFamily: 'monospace', marginBottom: 12 }}>COURSE</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                <button onClick={() => setSelectedCourseId('')} style={{ padding: '7px 14px', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer', background: !selectedCourseId ? 'rgba(255,255,255,0.1)' : 'transparent', color: !selectedCourseId ? '#fff' : 'rgba(255,255,255,0.4)', border: `1px solid ${!selectedCourseId ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.07)'}`, transition: 'all 0.15s' }}>General</button>
+                {courses.map(c => (
+                  <button key={c.id} onClick={() => setSelectedCourseId(c.id)} style={{ padding: '7px 14px', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer', background: selectedCourseId === c.id ? `${c.color}18` : 'transparent', color: selectedCourseId === c.id ? c.color : 'rgba(255,255,255,0.4)', border: `1px solid ${selectedCourseId === c.id ? c.color + '40' : 'rgba(255,255,255,0.07)'}`, transition: 'all 0.15s' }}>{c.code}</button>
+                ))}
+              </div>
+              {selectedCourse?.materials?.length > 0 && <p style={{ fontSize: 11, color: GREEN, marginTop: 10 }}>✓ {selectedCourse.materials.length} file{selectedCourse.materials.length !== 1 ? 's' : ''} from {selectedCourse.code} loaded</p>}
+            </motion.div>
+          )}
+
+          {/* Topic input */}
+          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15, ease }}
+            style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, padding: '18px', marginBottom: 12 }}>
+            <div style={{ fontSize: 9, fontWeight: 900, color: 'rgba(255,255,255,0.25)', letterSpacing: '0.2em', fontFamily: 'monospace', marginBottom: 12 }}>TOPIC</div>
+            <input type="text" value={topic} onChange={e => setTopic(e.target.value)} onKeyDown={e => e.key === 'Enter' && canGenerate && generate()}
+              placeholder="e.g., Cell Division, Thermodynamics, Supply & Demand..."
+              style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, color: 'white', padding: '11px 14px', fontSize: 14, outline: 'none', boxSizing: 'border-box', transition: 'border-color 0.2s' }}
+              onFocus={e => e.target.style.borderColor = `${BLUE}60`} onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.08)'} />
+          </motion.div>
+
+          {/* File upload */}
+          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2, ease }}
+            style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, padding: '18px', marginBottom: 12 }}>
+            <div style={{ fontSize: 9, fontWeight: 900, color: 'rgba(255,255,255,0.25)', letterSpacing: '0.2em', fontFamily: 'monospace', marginBottom: 12 }}>UPLOAD MATERIALS <span style={{ color: 'rgba(255,255,255,0.18)', fontWeight: 400, textTransform: 'none', fontSize: 10, letterSpacing: 0 }}>notes, slides, PDFs</span></div>
+            <input ref={fileInputRef} type="file" multiple accept=".txt,.md,.pdf,.pptx,.docx,.csv,.rtf" style={{ display: 'none' }} onChange={e => handleFiles(e.target.files)} />
+            <div onDrop={handleDrop} onDragOver={handleDragOver} onDragLeave={handleDragLeave} onClick={() => fileInputRef.current?.click()}
+              style={{ border: `1.5px dashed ${isDragging ? BLUE : 'rgba(255,255,255,0.12)'}`, borderRadius: 12, padding: '28px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, cursor: 'pointer', background: isDragging ? 'rgba(59,130,246,0.05)' : 'transparent', transition: 'all 0.2s', position: 'relative', overflow: 'hidden' }}>
+              {isDragging && <div style={{ position: 'absolute', inset: 0, background: `linear-gradient(90deg, transparent, ${BLUE}08, transparent)`, animation: 'clutch-scan 1.5s linear infinite' }} />}
+              <div style={{ width: 40, height: 40, borderRadius: 10, background: isDragging ? `${BLUE}18` : 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke={isDragging ? BLUE : 'rgba(255,255,255,0.35)'} strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" /></svg>
+              </div>
+              <p style={{ color: isDragging ? BLUE : 'rgba(255,255,255,0.6)', fontWeight: 700, fontSize: 13 }}>{isDragging ? 'Drop files' : 'Drag & drop or click'}</p>
+              <p style={{ color: 'rgba(255,255,255,0.25)', fontSize: 11 }}>.txt .md .pdf .pptx .docx</p>
             </div>
-
-            {/* SCENE 00b — CHEAT SHEET (show first for quick access) */}
-            {result.cheatSheet?.length > 0 && (
-              <SceneSection label="Scene 00b" title="Cheat Sheet" subtitle="Direct facts — memorize these first">
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {result.cheatSheet.map((fact, i) => (
-                    <div key={i} style={{
-                      display: 'flex', alignItems: 'flex-start', gap: 10,
-                      padding: '10px 14px', borderRadius: 10,
-                      background: 'rgba(255,255,255,0.03)',
-                      borderLeft: `3px solid ${BLUE}55`,
-                      border: '1px solid rgba(255,255,255,0.06)',
-                    }}>
-                      <span style={{
-                        fontSize: 10, fontWeight: 900, color: BLUE,
-                        flexShrink: 0, marginTop: 1, fontFamily: 'ui-monospace, monospace',
-                      }}>{String(i + 1).padStart(2, '0')}</span>
-                      <span style={{ ...BODY, fontSize: 13, lineHeight: 1.55 }}>{fact}</span>
-                    </div>
-                  ))}
-                </div>
-              </SceneSection>
-            )}
-
-            {/* SCENE 01 — CORE CONCEPTS */}
-            {(result.coreConcepts?.length > 0 || result.keyConcepts?.length > 0) && (
-              <SceneSection label="Scene 01" title="Core Concepts" subtitle="Master these first">
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {(result.coreConcepts || result.keyConcepts || []).map((concept, i) => (
-                    <div key={i}>
-                      <button
-                        onClick={() => setActiveConceptIdx(activeConceptIdx === i ? null : i)}
-                        style={{
-                          width: '100%', textAlign: 'left', background: 'rgba(255,255,255,0.04)',
-                          border: `1px solid ${activeConceptIdx === i ? 'rgba(59,130,246,0.3)' : 'rgba(255,255,255,0.06)'}`,
-                          borderRadius: 12, padding: '14px 16px', cursor: 'pointer',
-                          transition: 'border 0.15s',
-                        }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                          <span style={{ color: '#fff', fontWeight: 900, fontSize: 15, letterSpacing: '-0.02em' }}>
-                            {concept.term || concept.title}
-                          </span>
-                          <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="rgba(255,255,255,0.3)" strokeWidth={2}
-                            style={{ transform: activeConceptIdx === i ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s', flexShrink: 0 }}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                          </svg>
-                        </div>
-
-                        {activeConceptIdx === i && (
-                          <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                            <p style={{ ...BODY, fontSize: 13, lineHeight: 1.65, marginBottom: concept.example ? 10 : 0 }}>
-                              {concept.explanation || concept.definition}
-                            </p>
-                            {concept.example && (
-                              <div style={{
-                                background: 'rgba(59,130,246,0.07)', border: '1px solid rgba(59,130,246,0.12)',
-                                borderRadius: 8, padding: '8px 12px', fontSize: 12, color: 'rgba(255,255,255,0.6)',
-                                fontStyle: 'italic',
-                              }}>
-                                Example: {concept.example}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </SceneSection>
-            )}
-
-            {/* SCENE 02 — WORKED EXAMPLES */}
-            {result.workedExamples?.length > 0 && (
-              <SceneSection label="Scene 02" title="Worked Examples" subtitle="Step-by-step walkthroughs">
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  {result.workedExamples.map((ex, i) => (
-                    <div key={i} style={{
-                      padding: '14px 16px', borderRadius: 12,
-                      background: 'rgba(6,182,212,0.05)', borderLeft: `3px solid ${CYAN}`,
-                      border: `1px solid rgba(6,182,212,0.15)`,
-                    }}>
-                      <p style={{ color: '#fff', fontWeight: 800, fontSize: 14, marginBottom: 8 }}>
-                        {i + 1}. {ex.problem || ex.title}
-                      </p>
-                      <p style={{ ...BODY, fontSize: 13, lineHeight: 1.65, whiteSpace: 'pre-line', fontFamily: 'ui-monospace, monospace' }}>
-                        {ex.solution || ex.steps}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </SceneSection>
-            )}
-
-            {/* Formulas */}
-            {result.formulas?.length > 0 && (
-              <SceneSection label="Scene 02b" title="Formulas & Key Facts" subtitle="Memorize these">
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {result.formulas.map((f, i) => (
-                    <div key={i} style={{
-                      padding: '12px 14px', borderRadius: 10, background: 'rgba(255,255,255,0.04)', border: BORDER,
-                    }}>
-                      <p style={{ color: CYAN, fontFamily: 'ui-monospace, monospace', fontWeight: 800, fontSize: 14, marginBottom: 4 }}>
-                        {f.formula}
-                      </p>
-                      <p style={{ ...BODY, fontSize: 12 }}>{f.explanation}</p>
-                    </div>
-                  ))}
-                </div>
-              </SceneSection>
-            )}
-
-            {/* SCENE 03 — EXAM QUESTIONS */}
-            {result.likelyQuestions?.length > 0 && (
-              <SceneSection label="Scene 03" title="Likely Exam Questions" subtitle="Practice these before you sleep">
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {result.likelyQuestions.map((q, i) => (
-                    <details key={i} style={{ borderRadius: 12, overflow: 'hidden' }}>
-                      <summary style={{
-                        display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', cursor: 'pointer',
-                        background: 'rgba(255,255,255,0.04)', border: BORDER, borderRadius: 12, listStyle: 'none',
-                        userSelect: 'none',
-                      }}>
-                        <span style={{
-                          fontSize: 11, fontWeight: 900, padding: '2px 8px', borderRadius: 6,
-                          background: 'rgba(245,158,11,0.15)', color: '#f59e0b', flexShrink: 0,
-                        }}>Q{i + 1}</span>
-                        <span style={{ color: '#fff', fontSize: 13, fontWeight: 600, flex: 1 }}>{q.question}</span>
-                      </summary>
-                      <div style={{
-                        padding: '12px 16px 14px', background: 'rgba(255,255,255,0.03)',
-                        borderTop: DIVIDER, fontSize: 13, lineHeight: 1.65, ...BODY,
-                      }}>
-                        {q.answer}
-                      </div>
-                    </details>
-                  ))}
-                </div>
-              </SceneSection>
-            )}
-
-            {/* SCENE 04 — QUIZ YOURSELF */}
-            {result.likelyQuestions?.length > 0 && (
-              <SceneSection label="Scene 04" title="Quiz Yourself" subtitle="Test your knowledge">
-                {!quizActive && !quizFinished && (
-                  <div style={{ textAlign: 'center', padding: '20px 0' }}>
-                    <p style={{ ...BODY, fontSize: 13, marginBottom: 20 }}>
-                      {result.likelyQuestions.length} questions · Self-graded · Instant feedback
-                    </p>
-                    <button onClick={startQuiz} style={{
-                      padding: '11px 28px', borderRadius: 10, fontSize: 14, fontWeight: 800,
-                      background: `linear-gradient(135deg, ${BLUE}, ${CYAN})`, color: '#fff',
-                      border: 'none', cursor: 'pointer', boxShadow: `0 0 20px rgba(59,130,246,0.3)`,
-                    }}>Start Quiz →</button>
+            {uploadedFiles.length > 0 && (
+              <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {uploadedFiles.map(f => (
+                  <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 8, background: f.fromCourse ? 'rgba(52,211,153,0.05)' : 'rgba(255,255,255,0.03)', border: `1px solid ${f.fromCourse ? 'rgba(52,211,153,0.12)' : 'rgba(255,255,255,0.06)'}` }}>
+                    <span style={{ fontSize: 14 }}>{fileIcon(f.type, f.name)}</span>
+                    <span style={{ flex: 1, fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.7)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
+                    {f.needsPaste && <button onClick={() => { setBinaryFileName(f.name); setShowBinaryModal(true) }} style={{ fontSize: 10, fontWeight: 700, color: AMBER, background: `${AMBER}10`, border: `1px solid ${AMBER}25`, borderRadius: 6, padding: '2px 7px', cursor: 'pointer' }}>Paste text</button>}
+                    {f.fromCourse && selectedCourse && <span style={{ fontSize: 10, fontWeight: 700, color: GREEN, background: `${GREEN}10`, borderRadius: 6, padding: '2px 7px' }}>{selectedCourse.code}</span>}
+                    {!f.fromCourse && <button onClick={() => removeFile(f.id)} style={{ width: 22, height: 22, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', color: 'rgba(255,255,255,0.25)', cursor: 'pointer' }}>✕</button>}
                   </div>
-                )}
-
-                {quizActive && !quizFinished && (
-                  <QuizCard
-                    question={result.likelyQuestions[quizIndex]}
-                    index={quizIndex}
-                    total={result.likelyQuestions.length}
-                    showAnswer={showQuizAnswer}
-                    onReveal={() => setShowQuizAnswer(true)}
-                    onGrade={answerQuiz}
-                  />
-                )}
-
-                {quizFinished && (
-                  <QuizResults
-                    answers={quizAnswers}
-                    questions={result.likelyQuestions}
-                    onRetry={startQuiz}
-                  />
-                )}
-              </SceneSection>
-            )}
-
-            {/* SCENE 05 — FLASHCARDS */}
-            {result.coreConcepts?.length > 0 && (
-              <SceneSection label="Scene 05" title="Flashcards" subtitle="Flip through core concepts">
-                <div style={{ textAlign: 'center', padding: '20px 0' }}>
-                  <p style={{ ...BODY, fontSize: 13, marginBottom: 20 }}>
-                    {result.coreConcepts.length} cards · Term on front · Explanation on back
-                  </p>
-                  <button onClick={openFlashcards} style={{
-                    padding: '11px 28px', borderRadius: 10, fontSize: 14, fontWeight: 800,
-                    background: `linear-gradient(135deg, #7c3aed, #3b82f6)`, color: '#fff',
-                    border: 'none', cursor: 'pointer', boxShadow: `0 0 20px rgba(124,58,237,0.3)`,
-                  }}>Open Flashcards →</button>
-                </div>
-              </SceneSection>
-            )}
-
-            {/* Common Misconceptions */}
-            {(result.misconceptions?.length > 0 || result.commonMisconceptions?.length > 0 || result.commonMistakes?.length > 0) && (
-              <SceneSection
-                label="Scene 05b"
-                title="Common Misconceptions"
-                subtitle="What students get wrong — and what's actually correct"
-              >
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {(result.misconceptions || result.commonMisconceptions || result.commonMistakes || []).map((m, i) => {
-                    const isMythReality = m && typeof m === 'object' && m.myth
-                    return (
-                      <div key={i} style={{
-                        padding: '12px 14px', borderRadius: 10,
-                        background: 'rgba(239,68,68,0.05)',
-                        border: '1px solid rgba(239,68,68,0.12)',
-                        borderLeft: '3px solid rgba(239,68,68,0.5)',
-                      }}>
-                        {isMythReality ? (
-                          <>
-                            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 6 }}>
-                              <span style={{ color: '#ef4444', fontWeight: 900, fontSize: 11, flexShrink: 0, marginTop: 1 }}>✕ MYTH</span>
-                              <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, lineHeight: 1.5, fontStyle: 'italic' }}>{m.myth}</span>
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-                              <span style={{ color: '#34d399', fontWeight: 900, fontSize: 11, flexShrink: 0, marginTop: 1 }}>✓ FACT</span>
-                              <span style={{ color: 'rgba(255,255,255,0.75)', fontSize: 12, lineHeight: 1.5 }}>{m.reality}</span>
-                            </div>
-                          </>
-                        ) : (
-                          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-                            <span style={{ color: '#ef4444', fontWeight: 900, fontSize: 12, flexShrink: 0, marginTop: 1 }}>✕</span>
-                            <span style={{ ...BODY, fontSize: 13, lineHeight: 1.55 }}>{typeof m === 'string' ? m : JSON.stringify(m)}</span>
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              </SceneSection>
-            )}
-
-            {/* SCENE 06 — removed (cheat sheet now shown at top) */}
-            {false && result.cheatSheet?.length > 0 && (
-              <SceneSection label="Scene 06" title="Cheat Sheet" subtitle="Direct facts to memorize — pull these into your head">
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {result.cheatSheet.map((fact, i) => (
-                    <div key={i} style={{
-                      display: 'flex', alignItems: 'flex-start', gap: 10,
-                      padding: '10px 14px', borderRadius: 10,
-                      background: 'rgba(255,255,255,0.03)',
-                      borderLeft: `3px solid ${BLUE}55`,
-                      border: '1px solid rgba(255,255,255,0.06)',
-                    }}>
-                      <span style={{
-                        fontSize: 10, fontWeight: 900, color: BLUE,
-                        flexShrink: 0, marginTop: 1, fontFamily: 'ui-monospace, monospace',
-                      }}>{String(i + 1).padStart(2, '0')}</span>
-                      <span style={{ ...BODY, fontSize: 13, lineHeight: 1.55 }}>{fact}</span>
-                    </div>
-                  ))}
-                </div>
-              </SceneSection>
-            )}
-
-            {/* Bottom bar */}
-            <div style={{
-              position: 'fixed', bottom: 0, left: 0, right: 0,
-              background: 'rgba(8,10,14,0.95)', backdropFilter: 'blur(12px)',
-              borderTop: BORDER, padding: '12px 20px',
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
-              zIndex: 40,
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ fontSize: 11, color: sessionSaved ? '#22c55e' : 'rgba(255,255,255,0.3)', fontWeight: 600 }}>
-                  {sessionSaved ? '✓ Session Saved' : '○ Not saved'}
-                </span>
+                ))}
               </div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button
-                  onClick={() => setSessionsOpen(s => !s)}
-                  style={{
-                    padding: '8px 14px', borderRadius: 9, fontSize: 12, fontWeight: 700,
-                    background: sessionsOpen ? 'rgba(59,130,246,0.15)' : 'rgba(255,255,255,0.06)',
-                    color: sessionsOpen ? BLUE : 'rgba(255,255,255,0.55)',
-                    border: `1px solid ${sessionsOpen ? 'rgba(59,130,246,0.3)' : 'rgba(255,255,255,0.08)'}`,
-                    cursor: 'pointer',
-                  }}>
-                  Past Sessions {sessions.length > 0 && `(${sessions.length})`}
-                </button>
-                <button
-                  onClick={resetAll}
-                  style={{
-                    padding: '8px 14px', borderRadius: 9, fontSize: 12, fontWeight: 700,
-                    background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.55)',
-                    border: BORDER, cursor: 'pointer',
-                  }}>
-                  New Session ↺
-                </button>
+            )}
+          </motion.div>
+
+          {/* Level + Exam type */}
+          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25, ease }}
+            style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+            <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, padding: '18px' }}>
+              <div style={{ fontSize: 9, fontWeight: 900, color: 'rgba(255,255,255,0.25)', letterSpacing: '0.2em', fontFamily: 'monospace', marginBottom: 12 }}>LEVEL</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {[['highschool', 'High School'], ['undergraduate', 'Undergrad'], ['graduate', 'Graduate']].map(([v, l]) => (
+                  <button key={v} onClick={() => setCourseLevel(v)} style={{ padding: '9px 12px', borderRadius: 8, fontSize: 12, fontWeight: 700, textAlign: 'left', cursor: 'pointer', background: courseLevel === v ? `linear-gradient(135deg,${BLUE},${CYAN})` : 'rgba(255,255,255,0.04)', color: courseLevel === v ? '#fff' : 'rgba(255,255,255,0.45)', border: courseLevel === v ? 'none' : '1px solid rgba(255,255,255,0.07)', boxShadow: courseLevel === v ? `0 0 14px ${BLUE}30` : 'none', transition: 'all 0.15s' }}>{l}</button>
+                ))}
               </div>
             </div>
+            <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, padding: '18px' }}>
+              <div style={{ fontSize: 9, fontWeight: 900, color: 'rgba(255,255,255,0.25)', letterSpacing: '0.2em', fontFamily: 'monospace', marginBottom: 12 }}>EXAM TYPE</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {[['multiple-choice', 'Multiple Choice'], ['short-answer', 'Short Answer'], ['essay', 'Essay'], ['mixed', 'Mixed']].map(([v, l]) => (
+                  <button key={v} onClick={() => setExamType(v)} style={{ padding: '9px 12px', borderRadius: 8, fontSize: 12, fontWeight: 700, textAlign: 'left', cursor: 'pointer', background: examType === v ? `linear-gradient(135deg,${BLUE},${CYAN})` : 'rgba(255,255,255,0.04)', color: examType === v ? '#fff' : 'rgba(255,255,255,0.45)', border: examType === v ? 'none' : '1px solid rgba(255,255,255,0.07)', boxShadow: examType === v ? `0 0 14px ${BLUE}30` : 'none', transition: 'all 0.15s' }}>{l}</button>
+                ))}
+              </div>
+            </div>
+          </motion.div>
 
-            {/* Bottom padding for fixed bar */}
-            <div style={{ height: 72 }} />
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
+          {/* Focus areas */}
+          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3, ease }}
+            style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, padding: '18px', marginBottom: 24 }}>
+            <div style={{ fontSize: 9, fontWeight: 900, color: 'rgba(255,255,255,0.25)', letterSpacing: '0.2em', fontFamily: 'monospace', marginBottom: 12 }}>WHAT CONFUSES YOU <span style={{ color: 'rgba(255,255,255,0.15)', fontWeight: 400, textTransform: 'none', fontSize: 10, letterSpacing: 0 }}>optional</span></div>
+            <textarea value={focusAreas} onChange={e => setFocusAreas(e.target.value)} rows={2} placeholder="e.g., I don't understand how entropy works..."
+              style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, color: '#fff', fontSize: 13, padding: '10px 14px', resize: 'none', outline: 'none', boxSizing: 'border-box' }} />
+          </motion.div>
 
-// ─── Scene section wrapper ─────────────────────────────────────────────────────
-function SceneSection({ label, title, subtitle, children }) {
-  return (
-    <div style={{ marginBottom: 28 }}>
-      <p style={{ ...SCENE_LABEL, marginBottom: 6 }}>{label} — {title}</p>
-      {subtitle && <p style={{ ...BODY, fontSize: 12, marginBottom: 14 }}>{subtitle}</p>}
-      <div style={{
-        background: CARD, border: BORDER, borderRadius: 16, padding: '20px',
-      }}>
-        {children}
-      </div>
-    </div>
-  )
-}
-
-// ─── Loading ring (CSS animation via inline keyframes trick using style tag) ────
-function LoadingRing({ size, color, duration, reverse = false, offset = 0 }) {
-  const style = {
-    position: 'absolute',
-    top: offset, left: offset, right: offset, bottom: offset,
-    width: size - offset * 2, height: size - offset * 2,
-    borderRadius: '50%',
-    border: `3px solid transparent`,
-    borderTopColor: color,
-    borderRightColor: `${color}33`,
-    animation: `${reverse ? 'spin-reverse' : 'spin'} ${duration}s linear infinite`,
-  }
-
-  return (
-    <>
-      <style>{`
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        @keyframes spin-reverse { from { transform: rotate(0deg); } to { transform: rotate(-360deg); } }
-      `}</style>
-      <div style={style} />
-    </>
-  )
-}
-
-// ─── Quiz Card ─────────────────────────────────────────────────────────────────
-function QuizCard({ question, index, total, showAnswer, onReveal, onGrade }) {
-  const pct = Math.round(((index) / total) * 100)
-  return (
-    <div>
-      {/* Progress bar */}
-      <div style={{ marginBottom: 16 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-          <span style={{ fontSize: 11, color: BLUE, fontWeight: 700 }}>Question {index + 1} of {total}</span>
-          <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>{pct}% complete</span>
-        </div>
-        <div style={{ height: 4, background: 'rgba(255,255,255,0.08)', borderRadius: 2 }}>
-          <div style={{ height: '100%', width: `${pct}%`, background: `linear-gradient(90deg, ${BLUE}, ${CYAN})`, borderRadius: 2, transition: 'width 0.4s ease' }} />
-        </div>
-      </div>
-
-      {/* Question */}
-      <div style={{ background: 'rgba(255,255,255,0.04)', border: BORDER, borderRadius: 12, padding: '18px 16px', marginBottom: 14 }}>
-        <p style={{ color: '#fff', fontWeight: 700, fontSize: 15, lineHeight: 1.55 }}>{question.question}</p>
-      </div>
-
-      {/* Answer */}
-      {!showAnswer ? (
-        <button onClick={onReveal} style={{
-          width: '100%', padding: '11px 0', borderRadius: 10, fontSize: 13, fontWeight: 800,
-          background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.6)',
-          border: BORDER, cursor: 'pointer', letterSpacing: '0.03em',
-        }}>Reveal Answer</button>
-      ) : (
-        <div>
-          <div style={{
-            background: 'rgba(6,182,212,0.06)', border: '1px solid rgba(6,182,212,0.15)',
-            borderRadius: 12, padding: '14px 16px', marginBottom: 14,
-          }}>
-            <p style={{ ...BODY, fontSize: 13, lineHeight: 1.65 }}>{question.answer}</p>
-          </div>
-          <p style={{ ...BODY, fontSize: 12, marginBottom: 10, textAlign: 'center' }}>How did you do?</p>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
-            <button onClick={() => onGrade('got')} style={{
-              padding: '10px 0', borderRadius: 10, fontSize: 13, fontWeight: 800,
-              background: 'rgba(34,197,94,0.1)', color: '#22c55e',
-              border: '1px solid rgba(34,197,94,0.25)', cursor: 'pointer',
-            }}>Got It ✓</button>
-            <button onClick={() => onGrade('almost')} style={{
-              padding: '10px 0', borderRadius: 10, fontSize: 13, fontWeight: 800,
-              background: 'rgba(245,158,11,0.1)', color: '#f59e0b',
-              border: '1px solid rgba(245,158,11,0.25)', cursor: 'pointer',
-            }}>Almost</button>
-            <button onClick={() => onGrade('missed')} style={{
-              padding: '10px 0', borderRadius: 10, fontSize: 13, fontWeight: 800,
-              background: 'rgba(239,68,68,0.1)', color: '#ef4444',
-              border: '1px solid rgba(239,68,68,0.25)', cursor: 'pointer',
-            }}>Missed It ✗</button>
-          </div>
+          <motion.button whileHover={{ scale: 1.015 }} whileTap={{ scale: 0.98 }} onClick={generate} disabled={!canGenerate}
+            style={{ width: '100%', padding: '16px 0', borderRadius: 14, fontSize: 13, fontWeight: 900, letterSpacing: '0.1em', background: canGenerate ? `linear-gradient(135deg,${BLUE},${CYAN})` : 'rgba(255,255,255,0.05)', color: canGenerate ? '#fff' : 'rgba(255,255,255,0.2)', border: 'none', cursor: canGenerate ? 'pointer' : 'not-allowed', boxShadow: canGenerate ? `0 0 30px ${BLUE}35` : 'none', transition: 'all 0.2s' }}>
+            {uploadedFiles.length > 0 ? `BEGIN SESSION — ${uploadedFiles.length} FILE${uploadedFiles.length !== 1 ? 'S' : ''} →` : 'BEGIN SESSION →'}
+          </motion.button>
         </div>
       )}
-    </div>
-  )
-}
 
-// ─── Quiz Results ──────────────────────────────────────────────────────────────
-function QuizResults({ answers, questions, onRetry }) {
-  const got = answers.filter(a => a === 'got').length
-  const almost = answers.filter(a => a === 'almost').length
-  const missed = answers.filter(a => a === 'missed').length
-  const total = answers.length
-  const pct = Math.round((got / total) * 100)
-
-  const missedQuestions = questions.filter((_, i) => answers[i] === 'missed')
-
-  return (
-    <div>
-      {/* Score */}
-      <div style={{ textAlign: 'center', padding: '20px 0 16px' }}>
-        <div style={{
-          fontSize: 48, fontWeight: 900, letterSpacing: '-0.04em',
-          color: pct >= 80 ? '#22c55e' : pct >= 50 ? '#f59e0b' : '#ef4444',
-          marginBottom: 4,
-        }}>{pct}%</div>
-        <p style={{ ...BODY, fontSize: 13, marginBottom: 16 }}>
-          {pct >= 80 ? "You're ready. Go crush it." : pct >= 50 ? "Almost there — review the ones you missed." : "More practice needed. You've got time."}
-        </p>
-        <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginBottom: 20 }}>
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: 20, fontWeight: 900, color: '#22c55e' }}>{got}</div>
-            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>Got It</div>
+      {/* ══════════════════════════════════════════════════════════
+          LOADING
+      ══════════════════════════════════════════════════════════ */}
+      {step === 'loading' && (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '80vh', gap: 28, padding: 24 }}>
+          <div style={{ position: 'relative', width: 90, height: 90 }}>
+            <LoadingRing size={90} color={BLUE} duration={2} />
+            <LoadingRing size={64} color={CYAN} duration={3} reverse offset={13} />
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke={BLUE} strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+            </div>
           </div>
           <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: 20, fontWeight: 900, color: '#f59e0b' }}>{almost}</div>
-            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>Almost</div>
+            <div style={{ fontSize: 9, color: BLUE, fontWeight: 900, letterSpacing: '0.22em', fontFamily: 'monospace', marginBottom: 14 }}>ANALYZING</div>
+            <AnimatePresence mode="wait">
+              <motion.p key={loadingStep} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.3 }}
+                style={{ fontSize: 20, fontWeight: 900, color: 'white', letterSpacing: '-0.03em', marginBottom: 6 }}>
+                {LOADING_STEPS[loadingStep]}
+              </motion.p>
+            </AnimatePresence>
+            <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.3)' }}>{uploadedFiles.length > 0 ? `${uploadedFiles.length} file${uploadedFiles.length !== 1 ? 's' : ''} · ${courseName || topic}` : topic}</p>
           </div>
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: 20, fontWeight: 900, color: '#ef4444' }}>{missed}</div>
-            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>Missed</div>
-          </div>
-        </div>
-        <button onClick={onRetry} style={{
-          padding: '10px 24px', borderRadius: 10, fontSize: 13, fontWeight: 800,
-          background: `linear-gradient(135deg, ${BLUE}, ${CYAN})`, color: '#fff',
-          border: 'none', cursor: 'pointer',
-        }}>Try Again</button>
-      </div>
-
-      {/* Study these again */}
-      {missedQuestions.length > 0 && (
-        <div style={{ marginTop: 16 }}>
-          <p style={{ fontSize: 11, color: '#ef4444', fontWeight: 700, letterSpacing: '0.15em', textTransform: 'uppercase', marginBottom: 10 }}>
-            Study These Concepts Again
-          </p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {missedQuestions.map((q, i) => (
-              <div key={i} style={{
-                padding: '12px 14px', borderRadius: 10,
-                background: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.12)',
-                borderLeft: '3px solid rgba(239,68,68,0.4)',
-              }}>
-                <p style={{ color: '#fff', fontSize: 13, fontWeight: 600, lineHeight: 1.5, marginBottom: 4 }}>{q.question}</p>
-                <p style={{ ...BODY, fontSize: 12, lineHeight: 1.55 }}>{q.answer}</p>
-              </div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {LOADING_STEPS.map((_, i) => (
+              <div key={i} style={{ width: 28, height: 3, borderRadius: 2, background: i <= loadingStep ? BLUE : 'rgba(255,255,255,0.08)', transition: 'background 0.4s', boxShadow: i <= loadingStep ? `0 0 8px ${BLUE}` : 'none' }} />
             ))}
           </div>
         </div>
       )}
-    </div>
-  )
-}
 
-// ─── Flashcard Overlay ─────────────────────────────────────────────────────────
-function FlashcardOverlay({ concepts, order, index, flipped, onFlip, onPrev, onNext, onShuffle, onClose }) {
-  const card = concepts[order[index]]
-  if (!card) return null
+      {/* ══════════════════════════════════════════════════════════
+          RESULTS
+      ══════════════════════════════════════════════════════════ */}
+      {step === 'result' && result && (
+        <div style={{ maxWidth: 900, margin: '0 auto', padding: '32px 24px 120px' }}>
 
-  return (
-    <div style={{
-      position: 'fixed', inset: 0, background: BG, zIndex: 90,
-      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-      padding: 24,
-    }}>
-      {/* Top bar */}
-      <div style={{
-        position: 'absolute', top: 0, left: 0, right: 0,
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '16px 20px', borderBottom: BORDER,
-      }}>
-        <p style={{ ...SCENE_LABEL }}>Scene 05 — Flashcards</p>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ ...BODY, fontSize: 12 }}>{index + 1} / {order.length}</span>
-          <button onClick={onShuffle} style={{
-            padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700,
-            background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.55)',
-            border: BORDER, cursor: 'pointer',
-          }}>Shuffle</button>
-          <button onClick={onClose} style={{
-            width: 32, height: 32, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.55)',
-            border: BORDER, cursor: 'pointer', fontSize: 18,
-          }}>×</button>
-        </div>
-      </div>
+          {/* ── Result header ── */}
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease }} style={{ marginBottom: 48 }}>
+            <div style={{ fontSize: 9, fontWeight: 900, color: GREEN, letterSpacing: '0.22em', fontFamily: 'monospace', marginBottom: 10 }}>SESSION COMPLETE</div>
+            <h1 style={{ fontSize: 'clamp(26px,4vw,40px)', fontWeight: 900, letterSpacing: '-0.04em', color: 'white', margin: '0 0 10px' }}>
+              {topic || courseName || 'Your Study Guide'}
+            </h1>
+            {/* Stat pills */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 14 }}>
+              {[
+                [result.coreConcepts?.length || 0, 'Concepts', BLUE],
+                [result.cheatSheet?.length || 0, 'Key Facts', CYAN],
+                [result.likelyQuestions?.length || 0, 'Exam Qs', RED],
+                [result.flashcards?.length || 0, 'Flashcards', VIOLET],
+                ...(result.formulas?.length > 0 ? [[result.formulas.length, 'Formulas', AMBER]] : []),
+              ].map(([count, label, color]) => (
+                <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 999, background: `${color}10`, border: `1px solid ${color}30` }}>
+                  <span style={{ fontSize: 13, fontWeight: 900, color, fontFamily: 'monospace' }}>{count}</span>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.45)', letterSpacing: '0.1em' }}>{label}</span>
+                </div>
+              ))}
+              {uploadedFiles.length > 0 && <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 999, background: `${GREEN}08`, border: `1px solid ${GREEN}20` }}>
+                <span style={{ fontSize: 10, fontWeight: 700, color: GREEN }}>✓ {uploadedFiles.length} file{uploadedFiles.length !== 1 ? 's' : ''} analyzed</span>
+              </div>}
+            </div>
+          </motion.div>
 
-      {/* Progress bar */}
-      <div style={{ position: 'absolute', top: 56, left: 0, right: 0, height: 2, background: 'rgba(255,255,255,0.06)' }}>
-        <div style={{
-          height: '100%', background: `linear-gradient(90deg, ${BLUE}, ${CYAN})`,
-          width: `${((index + 1) / order.length) * 100}%`, transition: 'width 0.3s ease',
-        }} />
-      </div>
-
-      {/* Card with 3D flip */}
-      <div
-        onClick={onFlip}
-        style={{
-          width: '100%', maxWidth: 520, height: 280, cursor: 'pointer',
-          perspective: 1000,
-          marginTop: 20,
-        }}>
-        <div style={{
-          width: '100%', height: '100%',
-          position: 'relative',
-          transformStyle: 'preserve-3d',
-          transform: flipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
-          transition: 'transform 0.5s ease',
-        }}>
-          {/* Front */}
-          <div style={{
-            position: 'absolute', inset: 0,
-            backfaceVisibility: 'hidden',
-            background: 'rgba(255,255,255,0.05)', border: BORDER, borderRadius: 20,
-            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-            padding: 32, textAlign: 'center',
-          }}>
-            <p style={{ fontSize: 9, color: BLUE, fontWeight: 700, letterSpacing: '0.2em', textTransform: 'uppercase', marginBottom: 16 }}>
-              Term
-            </p>
-            <p style={{ color: '#fff', fontSize: 28, fontWeight: 900, letterSpacing: '-0.03em', lineHeight: 1.2 }}>
-              {card.term || card.title}
-            </p>
-            <p style={{ ...BODY, fontSize: 12, marginTop: 20 }}>Click to flip</p>
-          </div>
-
-          {/* Back */}
-          <div style={{
-            position: 'absolute', inset: 0,
-            backfaceVisibility: 'hidden',
-            transform: 'rotateY(180deg)',
-            background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.2)', borderRadius: 20,
-            display: 'flex', flexDirection: 'column', justifyContent: 'center',
-            padding: 28, overflowY: 'auto',
-          }}>
-            <p style={{ fontSize: 9, color: CYAN, fontWeight: 700, letterSpacing: '0.2em', textTransform: 'uppercase', marginBottom: 12 }}>
-              Explanation
-            </p>
-            <p style={{ color: 'rgba(255,255,255,0.85)', fontSize: 14, lineHeight: 1.65, marginBottom: 12 }}>
-              {card.explanation || card.definition}
-            </p>
-            {card.whyItMatters && (
-              <div style={{ borderTop: DIVIDER, paddingTop: 12, marginTop: 4 }}>
-                <p style={{ fontSize: 11, color: CYAN, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 6 }}>
-                  Why It Matters
-                </p>
-                <p style={{ ...BODY, fontSize: 13, lineHeight: 1.55 }}>{card.whyItMatters}</p>
+          {/* ── IN OTHER WORDS ── */}
+          {result.plainEnglish && (
+            <ScanSection scene="00 · DECODE" title="In Other Words" accent={VIOLET}>
+              <div style={{ background: 'rgba(139,92,246,0.05)', border: '1px solid rgba(139,92,246,0.18)', borderRadius: 20, padding: '32px 36px', position: 'relative', overflow: 'hidden' }}>
+                {/* Big quote mark */}
+                <div style={{ position: 'absolute', top: -20, left: 18, fontSize: 140, color: 'rgba(139,92,246,0.07)', fontFamily: 'Georgia, serif', lineHeight: 1, pointerEvents: 'none', userSelect: 'none' }}>"</div>
+                {/* AI label */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 22 }}>
+                  <div style={{ width: 30, height: 30, borderRadius: '50%', background: `linear-gradient(135deg,${VIOLET},${BLUE})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, flexShrink: 0 }}>⚡</div>
+                  <span style={{ fontSize: 9, fontWeight: 900, letterSpacing: '0.22em', color: VIOLET, fontFamily: 'monospace' }}>AI TUTOR — PLAIN ENGLISH</span>
+                  <div style={{ flex: 1, height: 1, background: 'rgba(139,92,246,0.15)' }} />
+                </div>
+                {/* Paragraphs */}
+                {result.plainEnglish.split('\n').filter(p => p.trim()).map((para, i, arr) => (
+                  <motion.p key={i}
+                    initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
+                    transition={{ delay: i * 0.12, ease }}
+                    style={{ fontSize: 15, lineHeight: 1.9, color: 'rgba(255,255,255,0.8)', fontWeight: 400, margin: 0, marginBottom: i < arr.length - 1 ? 20 : 0 }}>
+                    {para}
+                  </motion.p>
+                ))}
               </div>
-            )}
+            </ScanSection>
+          )}
+
+          {/* ── CHEAT SHEET — terminal ── */}
+          {result.cheatSheet?.length > 0 && (
+            <ScanSection scene="01 · DATA" title="Cheat Sheet" accent={CYAN}>
+              <div style={{ background: '#04060a', border: `1px solid ${CYAN}25`, borderRadius: 16, overflow: 'hidden' }}>
+                {/* Terminal header */}
+                <div style={{ background: `${CYAN}07`, borderBottom: `1px solid ${CYAN}18`, padding: '10px 18px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#ef4444' }} />
+                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: AMBER }} />
+                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: GREEN }} />
+                  <span style={{ marginLeft: 10, fontSize: 10, fontWeight: 700, letterSpacing: '0.18em', color: `${CYAN}70`, fontFamily: 'monospace' }}>CLUTCH.BRIEF — {result.cheatSheet.length} ITEMS LOADED</span>
+                </div>
+                <div style={{ padding: '16px 18px' }}>
+                  {result.cheatSheet.map((fact, i) => (
+                    <motion.div key={i}
+                      initial={{ opacity: 0, x: -12 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }}
+                      transition={{ delay: i * 0.035, ease }}
+                      style={{ display: 'flex', alignItems: 'flex-start', gap: 14, padding: '8px 0', borderBottom: i < result.cheatSheet.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none' }}>
+                      <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: 11, color: CYAN, flexShrink: 0, marginTop: 2, minWidth: 32 }}>{'>'} {String(i + 1).padStart(2, '0')}</span>
+                      <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.75)', lineHeight: 1.6 }}>{fact}</span>
+                    </motion.div>
+                  ))}
+                </div>
+              </div>
+            </ScanSection>
+          )}
+
+          {/* ── CORE CONCEPTS — card grid ── */}
+          {(result.coreConcepts?.length > 0 || result.keyConcepts?.length > 0) && (
+            <ScanSection scene="02 · CORE" title="Core Concepts" accent={BLUE}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12 }}>
+                {(result.coreConcepts || result.keyConcepts || []).map((concept, i) => (
+                  <ConceptCard key={i} concept={concept} index={i} />
+                ))}
+              </div>
+            </ScanSection>
+          )}
+
+          {/* ── FORMULAS ── */}
+          {result.formulas?.length > 0 && (
+            <ScanSection scene="03 · MATH" title="Formulas" accent={AMBER}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 10 }}>
+                {result.formulas.map((f, i) => (
+                  <motion.div key={i}
+                    initial={{ opacity: 0, y: 14 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.07 }}
+                    style={{ background: `${AMBER}05`, border: `1px solid ${AMBER}20`, borderRadius: 14, padding: '18px', fontFamily: 'ui-monospace, monospace' }}>
+                    <div style={{ fontSize: 9, fontWeight: 900, letterSpacing: '0.2em', color: `${AMBER}60`, marginBottom: 10, textTransform: 'uppercase' }}>{f.name}</div>
+                    <div style={{ fontSize: 22, fontWeight: 900, color: AMBER, marginBottom: 12, letterSpacing: '-0.01em', wordBreak: 'break-all' }}>{f.formula}</div>
+                    {f.variables && <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', lineHeight: 1.8, marginBottom: f.whenToUse ? 10 : 0 }}>{f.variables}</div>}
+                    {f.whenToUse && <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)', lineHeight: 1.6, fontFamily: 'inherit', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: 10 }}>{f.whenToUse}</div>}
+                  </motion.div>
+                ))}
+              </div>
+            </ScanSection>
+          )}
+
+          {/* ── WORKED EXAMPLES ── */}
+          {result.workedExamples?.length > 0 && (
+            <ScanSection scene="04 · APPLY" title="Worked Examples" accent={CYAN}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                {result.workedExamples.map((ex, i) => (
+                  <motion.div key={i}
+                    initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.08 }}
+                    style={{ borderRadius: 14, overflow: 'hidden', border: `1px solid ${CYAN}18` }}>
+                    <div style={{ background: `${CYAN}07`, padding: '12px 18px', borderBottom: `1px solid ${CYAN}12`, display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <span style={{ fontSize: 9, fontWeight: 900, color: `${CYAN}70`, fontFamily: 'monospace', letterSpacing: '0.18em', flexShrink: 0 }}>PROBLEM {String(i + 1).padStart(2, '0')}</span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: 'white', lineHeight: 1.4 }}>{ex.problem || ex.title}</span>
+                    </div>
+                    <div style={{ padding: '18px', background: 'rgba(0,0,0,0.25)' }}>
+                      <div style={{ fontSize: 9, fontWeight: 900, letterSpacing: '0.2em', color: `${CYAN}40`, fontFamily: 'monospace', marginBottom: 12 }}>SOLUTION</div>
+                      <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.7)', lineHeight: 1.9, whiteSpace: 'pre-line', fontFamily: 'ui-monospace, monospace', margin: 0 }}>{ex.solution || ex.steps}</p>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            </ScanSection>
+          )}
+
+          {/* ── EXAM QUESTIONS ── */}
+          {result.likelyQuestions?.length > 0 && (
+            <ScanSection scene="05 · PREP" title="Likely Exam Questions" accent={RED}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {result.likelyQuestions.map((q, i) => <ExamQuestionCard key={i} question={q} index={i} />)}
+              </div>
+            </ScanSection>
+          )}
+
+          {/* ── QUIZ ── */}
+          {result.likelyQuestions?.length > 0 && (
+            <ScanSection scene="06 · TEST" title="Quiz Yourself" accent={BLUE}>
+              <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 16, padding: '24px' }}>
+                {!quizActive && !quizFinished && (
+                  <div style={{ textAlign: 'center', padding: '16px 0' }}>
+                    <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.35)', marginBottom: 20 }}>{result.likelyQuestions.length} questions · Self-graded · Instant feedback</p>
+                    <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }} onClick={startQuiz}
+                      style={{ padding: '12px 32px', borderRadius: 12, fontSize: 13, fontWeight: 800, background: `linear-gradient(135deg,${BLUE},${CYAN})`, color: '#fff', border: 'none', cursor: 'pointer', boxShadow: `0 0 24px ${BLUE}30` }}>
+                      Start Quiz →
+                    </motion.button>
+                  </div>
+                )}
+                {quizActive && !quizFinished && <QuizCard question={result.likelyQuestions[quizIndex]} index={quizIndex} total={result.likelyQuestions.length} showAnswer={showQuizAnswer} onReveal={() => setShowQuizAnswer(true)} onGrade={answerQuiz} />}
+                {quizFinished && <QuizResults answers={quizAnswers} questions={result.likelyQuestions} onRetry={startQuiz} />}
+              </div>
+            </ScanSection>
+          )}
+
+          {/* ── MISCONCEPTIONS ── */}
+          {misconceptionsList.length > 0 && (
+            <ScanSection scene="07 · TRAPS" title="Misconceptions" accent={RED}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {misconceptionsList.map((m, i) => {
+                  const isMR = m && typeof m === 'object' && m.myth
+                  return (
+                    <motion.div key={i}
+                      initial={{ opacity: 0, y: 10 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.06 }}>
+                      {isMR ? (
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, borderRadius: 12, overflow: 'hidden' }}>
+                          <div style={{ padding: '16px', background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)', borderRadius: 12 }}>
+                            <div style={{ fontSize: 9, fontWeight: 900, color: RED, letterSpacing: '0.2em', marginBottom: 10, fontFamily: 'monospace' }}>✕ MYTH</div>
+                            <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)', lineHeight: 1.65, fontStyle: 'italic', margin: 0 }}>{m.myth}</p>
+                          </div>
+                          <div style={{ padding: '16px', background: 'rgba(52,211,153,0.05)', border: '1px solid rgba(52,211,153,0.15)', borderRadius: 12 }}>
+                            <div style={{ fontSize: 9, fontWeight: 900, color: GREEN, letterSpacing: '0.2em', marginBottom: 10, fontFamily: 'monospace' }}>✓ REALITY</div>
+                            <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.75)', lineHeight: 1.65, margin: 0 }}>{m.reality}</p>
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ padding: '12px 16px', borderRadius: 10, background: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.12)', borderLeft: '3px solid rgba(239,68,68,0.4)' }}>
+                          <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.65)', lineHeight: 1.6 }}>{typeof m === 'string' ? m : JSON.stringify(m)}</span>
+                        </div>
+                      )}
+                    </motion.div>
+                  )
+                })}
+              </div>
+            </ScanSection>
+          )}
+
+          {/* ── FLASHCARDS ── */}
+          {result.coreConcepts?.length > 0 && (
+            <ScanSection scene="08 · DRILL" title="Flashcards" accent={VIOLET}>
+              <div style={{ background: `${VIOLET}06`, border: `1px solid ${VIOLET}20`, borderRadius: 16, padding: '28px', textAlign: 'center' }}>
+                <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.35)', marginBottom: 20 }}>
+                  {result.coreConcepts.length} cards · Term → Explanation · Tap to flip
+                </div>
+                <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }} onClick={openFlashcards}
+                  style={{ padding: '12px 32px', borderRadius: 12, fontSize: 13, fontWeight: 800, background: `linear-gradient(135deg,#7c3aed,${BLUE})`, color: '#fff', border: 'none', cursor: 'pointer', boxShadow: '0 0 24px rgba(124,58,237,0.3)' }}>
+                  Open Flashcards →
+                </motion.button>
+              </div>
+            </ScanSection>
+          )}
+
+          {/* Bottom bar */}
+          <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: 'rgba(8,10,14,0.96)', backdropFilter: 'blur(16px)', borderTop: '1px solid rgba(255,255,255,0.06)', padding: '12px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', zIndex: 40 }}>
+            <span style={{ fontSize: 11, color: sessionSaved ? GREEN : 'rgba(255,255,255,0.25)', fontWeight: 700 }}>
+              {sessionSaved ? '✓ Session Saved' : '○ Saving...'}
+            </span>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => setSessionsOpen(s => !s)} style={{ padding: '8px 14px', borderRadius: 9, fontSize: 11, fontWeight: 700, background: sessionsOpen ? `${BLUE}18` : 'rgba(255,255,255,0.05)', color: sessionsOpen ? BLUE : 'rgba(255,255,255,0.5)', border: `1px solid ${sessionsOpen ? BLUE + '35' : 'rgba(255,255,255,0.07)'}`, cursor: 'pointer', transition: 'all 0.2s' }}>
+                Past Sessions {sessions.length > 0 && `(${sessions.length})`}
+              </button>
+              <button onClick={resetAll} style={{ padding: '8px 14px', borderRadius: 9, fontSize: 11, fontWeight: 700, background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.07)', cursor: 'pointer' }}>
+                New Session ↺
+              </button>
+            </div>
           </div>
+          <div style={{ height: 72 }} />
         </div>
-      </div>
-
-      {/* Navigation */}
-      <div style={{ display: 'flex', gap: 12, marginTop: 28 }}>
-        <button onClick={onPrev} disabled={index === 0} style={{
-          width: 48, height: 48, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: index === 0 ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.07)',
-          color: index === 0 ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.6)',
-          border: BORDER, cursor: index === 0 ? 'not-allowed' : 'pointer', fontSize: 18,
-        }}>←</button>
-        <button onClick={onFlip} style={{
-          padding: '0 24px', height: 48, borderRadius: 12, fontSize: 13, fontWeight: 700,
-          background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.6)',
-          border: BORDER, cursor: 'pointer',
-        }}>
-          {flipped ? 'Show Term' : 'Show Answer'}
-        </button>
-        <button onClick={onNext} disabled={index === order.length - 1} style={{
-          width: 48, height: 48, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: index === order.length - 1 ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.07)',
-          color: index === order.length - 1 ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.6)',
-          border: BORDER, cursor: index === order.length - 1 ? 'not-allowed' : 'pointer', fontSize: 18,
-        }}>→</button>
-      </div>
-
-      <p style={{ ...BODY, fontSize: 11, marginTop: 14 }}>
-        {flipped ? 'Back' : 'Front'} · {index + 1} of {order.length}
-      </p>
+      )}
     </div>
   )
 }
