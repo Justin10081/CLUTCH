@@ -11,6 +11,7 @@ import ClutchMode from './pages/ClutchMode'
 import GPASimulator from './pages/GPASimulator'
 import Deadlines from './pages/Deadlines'
 import Social from './pages/Social'
+import Settings from './pages/Settings'
 import NotFound from './pages/NotFound'
 
 function ProtectedRoute({ children }) {
@@ -43,6 +44,7 @@ export default function App() {
         <Route path="/gpa" element={<GPASimulator />} />
         <Route path="/deadlines" element={<Deadlines />} />
         <Route path="/social" element={<Social />} />
+        <Route path="/settings" element={<Settings />} />
       </Route>
       <Route path="*" element={<NotFound />} />
     </Routes>

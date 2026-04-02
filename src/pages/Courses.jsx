@@ -282,9 +282,10 @@ export default function Courses() {
                   variants={{ hidden: { opacity: 0, y: 32 }, show: { opacity: 1, y: 0, transition: { duration: 0.5, ease } } }}
                   onHoverStart={() => setHoveredCard(course.id)}
                   onHoverEnd={() => setHoveredCard(null)}
-                  style={{ position: 'relative', flexShrink: 0 }}>
+                  style={{ position: 'relative', flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
 
-                  {/* Film poster card */}
+                  {/* Film poster card — whole card navigates to course */}
+                  <Link to={`/courses/${course.id}`} style={{ textDecoration: 'none', display: 'block', cursor: 'none' }}>
                   <motion.div
                     animate={{
                       y: isHovered ? -6 : 0,
@@ -394,74 +395,43 @@ export default function Courses() {
                       </div>
                     </div>
 
-                    {/* Hover overlay — actions */}
-                    <AnimatePresence>
-                      {isHovered && (
-                        <motion.div
-                          initial={{ opacity: 0 }}
-                          animate={{ opacity: 1 }}
-                          exit={{ opacity: 0 }}
-                          transition={{ duration: 0.2 }}
-                          style={{
-                            position: 'absolute', inset: 0,
-                            background: 'rgba(8,10,14,0.82)',
-                            backdropFilter: 'blur(4px)',
-                            display: 'flex', flexDirection: 'column',
-                            alignItems: 'center', justifyContent: 'center',
-                            gap: 12,
-                          }}>
-                          {/* View course */}
-                          <Link to={`/courses/${course.id}`} style={{ textDecoration: 'none', cursor: 'none', width: '70%' }}>
-                            <motion.div
-                              whileHover={{ scale: 1.04 }}
-                              whileTap={{ scale: 0.97 }}
-                              style={{
-                                background: 'linear-gradient(135deg, #3b82f6, #06b6d4)',
-                                borderRadius: 8, padding: '10px 0',
-                                fontSize: 10, fontWeight: 800, letterSpacing: '0.18em',
-                                textTransform: 'uppercase', color: 'white',
-                                textAlign: 'center',
-                              }}>
-                              Open Course
-                            </motion.div>
-                          </Link>
+                  </motion.div>
+                  </Link>
 
-                          {/* Edit */}
-                          <motion.button
-                            whileHover={{ scale: 1.04 }}
-                            whileTap={{ scale: 0.97 }}
-                            onClick={(e) => { e.stopPropagation(); openEdit(course) }}
-                            style={{
-                              background: 'rgba(255,255,255,0.06)',
-                              border: '1px solid rgba(255,255,255,0.1)',
-                              borderRadius: 8, padding: '10px 0',
-                              width: '70%',
-                              fontSize: 10, fontWeight: 700, letterSpacing: '0.15em',
-                              textTransform: 'uppercase', color: 'rgba(255,255,255,0.6)',
-                              cursor: 'none',
-                            }}>
-                            Edit
-                          </motion.button>
-
-                          {/* Delete */}
-                          <motion.button
-                            whileHover={{ scale: 1.04 }}
-                            whileTap={{ scale: 0.97 }}
-                            onClick={(e) => { e.stopPropagation(); setDeleteConfirm(course.id) }}
-                            style={{
-                              background: 'rgba(239,68,68,0.08)',
-                              border: '1px solid rgba(239,68,68,0.18)',
-                              borderRadius: 8, padding: '8px 0',
-                              width: '70%',
-                              fontSize: 9, fontWeight: 700, letterSpacing: '0.15em',
-                              textTransform: 'uppercase', color: 'rgba(248,113,113,0.7)',
-                              cursor: 'none',
-                            }}>
-                            Remove
-                          </motion.button>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
+                  {/* Edit / Remove controls — below card, always accessible */}
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: isHovered ? 1 : 0.45 }}
+                    transition={{ duration: 0.2 }}
+                    style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+                    <motion.button
+                      whileHover={{ scale: 1.06, backgroundColor: 'rgba(255,255,255,0.09)' }}
+                      whileTap={{ scale: 0.95 }}
+                      onClick={() => openEdit(course)}
+                      style={{
+                        background: 'rgba(255,255,255,0.05)',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        borderRadius: 8, padding: '7px 16px',
+                        fontSize: 9, fontWeight: 800, letterSpacing: '0.18em',
+                        textTransform: 'uppercase', color: 'rgba(255,255,255,0.55)',
+                        cursor: 'none', transition: 'background 0.15s',
+                      }}>
+                      Edit
+                    </motion.button>
+                    <motion.button
+                      whileHover={{ scale: 1.06, backgroundColor: 'rgba(239,68,68,0.12)' }}
+                      whileTap={{ scale: 0.95 }}
+                      onClick={() => setDeleteConfirm(course.id)}
+                      style={{
+                        background: 'rgba(239,68,68,0.05)',
+                        border: '1px solid rgba(239,68,68,0.15)',
+                        borderRadius: 8, padding: '7px 12px',
+                        fontSize: 9, fontWeight: 800, letterSpacing: '0.18em',
+                        textTransform: 'uppercase', color: 'rgba(248,113,113,0.6)',
+                        cursor: 'none', transition: 'background 0.15s',
+                      }}>
+                      ✕
+                    </motion.button>
                   </motion.div>
                 </motion.div>
               )

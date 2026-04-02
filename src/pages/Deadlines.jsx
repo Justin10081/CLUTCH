@@ -139,7 +139,7 @@ function CalendarView({ deadlines, onEdit, onAddForDate }) {
           transition={{ duration: 0.32, ease }}
           style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
           {cells.map((cell, i) => {
-            if (!cell) return <div key={i} style={{ minHeight: 80 }} />
+            if (!cell) return <div key={i} style={{ minHeight: 110 }} />
             const items = byDate[cell.dateStr] || []
             const isToday = cell.dateStr === todayStr
             const isPast = cell.dateStr < todayStr
@@ -150,7 +150,7 @@ function CalendarView({ deadlines, onEdit, onAddForDate }) {
                 whileHover={{ scale: 1.04, background: 'rgba(59,130,246,0.07)', borderColor: 'rgba(59,130,246,0.25)' }}
                 onClick={() => onAddForDate(cell.dateStr)}
                 style={{
-                  minHeight: 80, padding: '7px 6px', borderRadius: 10, cursor: 'pointer',
+                  minHeight: 110, padding: '7px 6px', borderRadius: 10, cursor: 'pointer',
                   background: isToday ? 'rgba(59,130,246,0.08)' : 'rgba(255,255,255,0.02)',
                   border: `1px solid ${isToday ? 'rgba(59,130,246,0.4)' : 'rgba(255,255,255,0.05)'}`,
                   opacity: isPast && items.length === 0 ? 0.25 : 1,

@@ -8,16 +8,17 @@ const PAGE_MAP = {
   '/courses': 'Course Hub',
   '/clutch': 'Clutch Mode',
   '/gpa': 'GPA Simulator',
-  '/deadlines': 'Deadlines',
+  '/deadlines': 'TO-DO',
   '/social': 'Ranked',
   '/dashboard': 'Overview',
+  '/settings': 'Settings',
 }
 
 const NAV_ITEMS = [
   { to: '/courses', label: 'Courses', sub: 'Your semester hub' },
   { to: '/clutch', label: 'Clutch Mode', sub: 'AI study engine' },
   { to: '/gpa', label: 'GPA Simulator', sub: 'What do you need?' },
-  { to: '/deadlines', label: 'Deadlines', sub: 'Stay on track' },
+  { to: '/deadlines', label: 'TO-DO', sub: 'Stay on track' },
   { to: '/social', label: 'Ranked', sub: 'Leaderboard & friends' },
 ]
 
@@ -219,10 +220,26 @@ export default function Layout() {
               <span style={{ fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.2)' }}>
                 {user?.email || 'demo@clutch.app'}
               </span>
-              <button onClick={handleSignOut}
-                style={{ background: 'none', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 999, padding: '8px 22px', fontSize: 10, fontWeight: 800, letterSpacing: '0.15em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.38)', cursor: 'none', transition: 'border-color 0.2s, color 0.2s' }}>
-                Sign Out
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                {/* Settings gear icon */}
+                <Link to="/settings"
+                  style={{
+                    width: 36, height: 36, borderRadius: '50%',
+                    border: '1px solid rgba(255,255,255,0.14)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    color: 'rgba(255,255,255,0.38)', cursor: 'none',
+                    textDecoration: 'none', transition: 'border-color 0.2s, color 0.2s',
+                  }}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="3" />
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                  </svg>
+                </Link>
+                <button onClick={handleSignOut}
+                  style={{ background: 'none', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 999, padding: '8px 22px', fontSize: 10, fontWeight: 800, letterSpacing: '0.15em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.38)', cursor: 'none', transition: 'border-color 0.2s, color 0.2s' }}>
+                  Sign Out
+                </button>
+              </div>
             </motion.div>
           </motion.div>
         )}

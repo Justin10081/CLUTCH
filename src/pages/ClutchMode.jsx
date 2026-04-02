@@ -28,54 +28,68 @@ function generateFallback(topic, files) {
   return {
     coreConcepts: [
       {
-        term: `Core Principles of ${topic}`,
+        term: `Core Definitions — ${topic}`,
         explanation: hasFiles
-          ? `Based on your uploaded materials (${fileNames}), focus on the fundamental definitions, main theories, and key relationships between concepts.`
-          : 'Review the fundamental definitions and theories covered in your course notes. Focus on bolded terms and chapter summaries.',
-        example: 'Look at your notes for the most frequently repeated ideas — those are highest probability exam content.',
-        whyItMatters: 'Core principles appear in 80% of exam questions in some form.',
+          ? `From your uploaded materials (${fileNames}): identify and memorize every bolded term, definition, and named concept. These are the backbone of any exam on ${topic}.`
+          : `The fundamental definitions in ${topic} form the basis of all exam questions. Every named concept, theorem, or framework must be understood precisely — not paraphrased.`,
+        example: `Write out each definition in one sentence without looking. Any you cannot recall from memory = highest priority to review.`,
       },
       {
-        term: 'Key Relationships & Causality',
-        explanation: 'Understand HOW and WHY things connect — not just what they are. Exams test whether you understand cause and effect, not just definitions.',
-        example: 'For each major concept, ask: "What causes this?" and "What does this cause?"',
-        whyItMatters: 'Application questions require understanding relationships, not just memorization.',
+        term: 'Key Mechanisms & Processes',
+        explanation: `Understand the step-by-step process of how things work in ${topic}. Exams frequently ask you to explain a mechanism, trace a process, or identify what happens at each stage.`,
+        example: 'For each major process: input → what happens → output. Know every step.',
       },
       {
-        term: 'Edge Cases & Exceptions',
-        explanation: 'Professors love testing edge cases. Know the "but what if..." scenarios for major rules.',
-        example: "If there's a rule, there's usually an exception. Know both.",
-        whyItMatters: 'Distinguishes A students from B students.',
+        term: 'Cause & Effect Relationships',
+        explanation: `In ${topic}, understand what causes what. Know the direction of relationships: if X changes, what happens to Y and Z? These appear in both short-answer and multiple choice.`,
+        example: 'For every major concept, identify: (1) what it is caused by, (2) what it causes.',
       },
       {
-        term: 'Real-World Applications',
-        explanation: 'Be ready to apply concepts to novel scenarios. Read any case studies or examples in your materials carefully.',
-        example: 'Think of one concrete real-world example for each major concept.',
-        whyItMatters: 'Higher-order thinking questions test application.',
+        term: 'Exceptions & Edge Cases',
+        explanation: `Know where the general rules of ${topic} break down. Exceptions, special cases, and boundary conditions are prime exam material because they test deep understanding vs. surface memorization.`,
+        example: `For each rule or definition, ask: "When does this NOT apply?"`,
+      },
+      {
+        term: 'Comparisons & Contrasts',
+        explanation: `Know how to compare related concepts in ${topic}. Exams frequently ask: "What is the difference between X and Y?" or "Compare approach A to approach B."`,
+        example: 'Build a mental comparison table: X vs Y across dimensions like purpose, mechanism, outcome.',
       },
     ],
-    formulas: hasFiles ? [] : [
-      { formula: 'Review all formulas from your notes', explanation: "Write each one 3x from memory. If you can't, that's what to study." },
-      { formula: 'Know the units for every formula', explanation: 'Easy marks if you know them.' },
+    cheatSheet: [
+      `${topic} — master all named concepts, definitions, and terminology`,
+      'Know every definition precisely — paraphrasing costs marks',
+      'Identify cause-and-effect relationships between all major concepts',
+      'Know step-by-step processes and mechanisms (not just outcomes)',
+      'Learn exceptions and edge cases for all major rules',
+      'Be able to compare similar concepts (know what makes each unique)',
+      hasFiles ? `From ${fileNames}: extract all bolded terms and numbered lists` : 'Review all bolded terms and numbered/bulleted lists in your notes',
+      'Know any real-world applications or case studies covered in class',
+      'Review all diagrams and figures — know every labeled component',
+      'Any formula or equation introduced = must know when and how to apply it',
     ],
+    formulas: [],
+    workedExamples: [],
     likelyQuestions: [
-      { question: `Explain the key concepts of ${topic} in your own words`, answer: 'Use precise definitions from your notes. Include examples to demonstrate understanding, not just memorized facts.' },
-      { question: `What are the main relationships/connections in ${topic}?`, answer: 'Draw connections between concepts. Show cause-and-effect relationships.' },
-      { question: 'Apply this knowledge to a novel scenario', answer: 'Break down the scenario, identify which concepts apply, then explain how they apply step by step.' },
-      { question: 'What are the limitations or criticisms of the main theories?', answer: 'Know at least 2 critiques for major concepts. Shows deeper understanding.' },
+      { question: `Define the core concepts of ${topic} and explain how they relate to each other`, answer: `Start with precise definitions from your notes. Then explain the relationships: how does concept A lead to or interact with concept B? Use specific terminology throughout.` },
+      { question: `Explain the mechanism/process of [main process in ${topic}]`, answer: `Walk through each stage in order. Name the inputs, what happens at each step, and the outputs. Identify what can go wrong at each stage and why.` },
+      { question: `What are the key differences between the main approaches/types in ${topic}?`, answer: `Compare them across: definition, mechanism, conditions for use, advantages, disadvantages. Use a structured comparison.` },
+      { question: `Apply the concepts of ${topic} to the following scenario: [novel scenario]`, answer: `Identify which concepts apply, explain how they apply step by step, and state the predicted outcome with reasoning.` },
+      { question: `What are the most common misconceptions about ${topic} and what is the correct understanding?`, answer: `Address each misconception directly: state the wrong belief, explain WHY it is wrong, and provide the correct understanding with evidence.` },
     ],
-    commonMisconceptions: [
-      'Confusing correlation with causation in explanations',
-      'Mixing up similar terms that sound alike but mean different things',
-      'Forgetting the scope/conditions under which a rule applies',
-      'Not reading the full question before answering',
+    misconceptions: [
+      { myth: 'Memorizing definitions is enough', reality: 'Exams test application and relationships. You must understand HOW and WHY, not just WHAT.' },
+      { myth: 'If you understand it in class, you can reproduce it on an exam', reality: "Understanding is not the same as recall. Test yourself by writing out concepts from memory — if you can't, you don't know it." },
+      { myth: 'Exceptions are minor details', reality: 'Exceptions are frequently tested because they reveal whether you truly understand a concept vs. just memorized the general rule.' },
+      { myth: 'Paraphrasing definitions is fine', reality: 'Technical definitions often have precise meanings where word choice matters. Learn the exact wording.' },
     ],
-    studyPlan: [
-      { title: 'Quick Review', minutes: 15, description: hasFiles ? `Read through all uploaded materials (${fileNames}). Don't memorize yet — refresh your memory. Star anything unfamiliar.` : `Read through all notes on ${topic}. Star anything you don't recognize.` },
-      { title: 'Active Recall', minutes: 20, description: 'Close your notes. Write down everything you remember. Then open and fill gaps. Focus on what you FORGOT.' },
-      { title: 'Practice Questions', minutes: 15, description: 'Answer the exam questions above WITHOUT looking at answers first. Then check.' },
-      { title: 'Final Cram', minutes: 10, description: "Review only things you got wrong. You're more ready than you think." },
+    flashcards: [
+      { front: `What is the central concept of ${topic}?`, back: 'Review your notes for the primary definition and mechanism.' },
+      { front: `What causes [main process in ${topic}]?`, back: 'Identify the inputs, triggers, and preconditions from your materials.' },
+      { front: `What are the main types/categories in ${topic}?`, back: 'List each type with its defining characteristics.' },
+      { front: `What are the exceptions to the main rules of ${topic}?`, back: 'Know at least 2-3 exceptions and what makes them special cases.' },
+      { front: `How do you compare [Concept A] vs [Concept B] in ${topic}?`, back: 'Compare by: definition, mechanism, conditions, outcomes.' },
     ],
+    summary: `${topic} — focus on precise definitions, mechanisms, cause-effect relationships, and exceptions. ${hasFiles ? `Your uploaded materials (${fileNames}) are your primary source — extract all named concepts, processes, and rules directly from them.` : 'Pull content directly from your lecture notes and course materials.'}`,
   }
 }
 
@@ -99,9 +113,9 @@ const cardStyle = {
 
 const LOADING_STEPS = [
   'Reading your materials...',
-  'Identifying exam-critical content...',
-  'Preparing deep explanations...',
-  'Building your teaching guide...',
+  'Extracting key content...',
+  'Building cheat sheet...',
+  'Compiling your study guide...',
 ]
 
 const STUDY_PLAN_DURATION = 60
@@ -347,44 +361,51 @@ export default function ClutchMode() {
     let data = null
     try {
       setLoadingStep(1)
-      const prompt = `You are an expert university tutor. Create a comprehensive exam study guide for: "${effectiveTopic}"
+      const prompt = `You are an expert university tutor creating a CONTENT CHEAT SHEET. Your job is to give the student the ACTUAL SUBJECT MATTER CONTENT to study — not study tips or advice. Everything should be direct, factual, and exam-ready.
+
+Topic: "${effectiveTopic}"
 ${courseCtx ? `Course: ${courseCtx.name} (${courseCtx.code || ''})` : ''}
 Exam type: ${examType || 'mixed'}
 Level: ${courseLevel || 'undergraduate'}
-${focusAreas ? `Focus on: ${focusAreas}` : ''}
-${fileContext ? `\nMATERIALS PROVIDED:\n${fileContext.slice(0, 10000)}` : ''}
+${focusAreas ? `Specific areas to cover: ${focusAreas}` : ''}
+${fileContext ? `\nMATERIALS TO EXTRACT CONTENT FROM:\n${fileContext.slice(0, 10000)}` : ''}
 
 Return ONLY valid JSON with this exact structure:
 {
   "coreConcepts": [
-    { "term": "string", "explanation": "string", "example": "string", "whyItMatters": "string" }
+    { "term": "string", "explanation": "string (thorough, specific — actual content not advice)", "example": "string (concrete example from the subject)" }
+  ],
+  "cheatSheet": [
+    "Direct fact, rule, formula, or definition to memorize — be specific and concrete"
   ],
   "formulas": [
     { "name": "string", "formula": "string", "whenToUse": "string", "variables": "string" }
   ],
+  "workedExamples": [
+    { "problem": "string", "solution": "string (step-by-step, show all work)" }
+  ],
   "likelyQuestions": [
-    { "question": "string", "answer": "string", "type": "string" }
+    { "question": "string", "answer": "string (complete, detailed answer with actual content)" }
   ],
   "misconceptions": [
     { "myth": "string", "reality": "string" }
   ],
-  "studyPlan": [
-    { "title": "string", "minutes": 15, "description": "string" }
-  ],
   "flashcards": [
     { "front": "string", "back": "string" }
   ],
-  "summary": "string"
+  "summary": "string (2-3 sentence overview of the most critical content)"
 }
 
-Rules:
-- coreConcepts: 5-8 most exam-critical concepts, detailed explanations
-- formulas: include ONLY if subject has math/science formulas, otherwise []
-- likelyQuestions: 5-7 likely exam questions with full answers
-- misconceptions: 3-5 common student mistakes
-- studyPlan: 4-5 timed phases, each with title (string), minutes (number), description (string)
-- flashcards: 8-12 term/definition pairs
-- Be specific to the actual topic and materials provided`
+CRITICAL RULES — these are non-negotiable:
+- coreConcepts: 6-10 concepts. explanation must be ACTUAL CONTENT (definitions, mechanisms, rules) — not study advice
+- cheatSheet: 10-20 bullet points of SPECIFIC FACTS to memorize (dates, rules, definitions, key relationships, constants, steps)
+- formulas: ALL relevant formulas/equations with variables defined. If no formulas exist, use []
+- workedExamples: 2-4 complete worked problems with full solutions. If no calculations needed, use []
+- likelyQuestions: 5-8 exam questions with thorough answers containing ACTUAL SUBJECT CONTENT
+- misconceptions: 3-5 specific wrong beliefs students have about this topic with correct explanations
+- flashcards: 10-15 term/definition pairs from the actual content
+- Pull directly from provided materials when available
+- Be SPECIFIC — use real terminology, real numbers, real mechanisms from the subject`
 
       const token = await getAuthToken()
       const res = await fetch('/api/groq', {
@@ -910,6 +931,29 @@ Rules:
               </p>
             </div>
 
+            {/* SCENE 00b — CHEAT SHEET (show first for quick access) */}
+            {result.cheatSheet?.length > 0 && (
+              <SceneSection label="Scene 00b" title="Cheat Sheet" subtitle="Direct facts — memorize these first">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {result.cheatSheet.map((fact, i) => (
+                    <div key={i} style={{
+                      display: 'flex', alignItems: 'flex-start', gap: 10,
+                      padding: '10px 14px', borderRadius: 10,
+                      background: 'rgba(255,255,255,0.03)',
+                      borderLeft: `3px solid ${BLUE}55`,
+                      border: '1px solid rgba(255,255,255,0.06)',
+                    }}>
+                      <span style={{
+                        fontSize: 10, fontWeight: 900, color: BLUE,
+                        flexShrink: 0, marginTop: 1, fontFamily: 'ui-monospace, monospace',
+                      }}>{String(i + 1).padStart(2, '0')}</span>
+                      <span style={{ ...BODY, fontSize: 13, lineHeight: 1.55 }}>{fact}</span>
+                    </div>
+                  ))}
+                </div>
+              </SceneSection>
+            )}
+
             {/* SCENE 01 — CORE CONCEPTS */}
             {(result.coreConcepts?.length > 0 || result.keyConcepts?.length > 0) && (
               <SceneSection label="Scene 01" title="Core Concepts" subtitle="Master these first">
@@ -943,15 +987,10 @@ Rules:
                               <div style={{
                                 background: 'rgba(59,130,246,0.07)', border: '1px solid rgba(59,130,246,0.12)',
                                 borderRadius: 8, padding: '8px 12px', fontSize: 12, color: 'rgba(255,255,255,0.6)',
-                                fontStyle: 'italic', marginBottom: concept.whyItMatters ? 8 : 0,
+                                fontStyle: 'italic',
                               }}>
                                 Example: {concept.example}
                               </div>
-                            )}
-                            {concept.whyItMatters && (
-                              <p style={{ fontSize: 12, color: CYAN, marginTop: 4 }}>
-                                Why it matters: {concept.whyItMatters}
-                              </p>
                             )}
                           </div>
                         )}
@@ -1085,108 +1124,65 @@ Rules:
             )}
 
             {/* Common Misconceptions */}
-            {(result.commonMisconceptions?.length > 0 || result.commonMistakes?.length > 0) && (
+            {(result.misconceptions?.length > 0 || result.commonMisconceptions?.length > 0 || result.commonMistakes?.length > 0) && (
               <SceneSection
                 label="Scene 05b"
                 title="Common Misconceptions"
-                subtitle="Students get these wrong"
+                subtitle="What students get wrong — and what's actually correct"
               >
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {(result.commonMisconceptions || result.commonMistakes || []).map((m, i) => (
-                    <div key={i} style={{
-                      display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 14px',
-                      borderRadius: 10, background: 'rgba(239,68,68,0.05)', borderLeft: '3px solid rgba(239,68,68,0.5)',
-                      border: '1px solid rgba(239,68,68,0.12)',
-                    }}>
-                      <span style={{ color: '#ef4444', fontWeight: 900, fontSize: 12, flexShrink: 0, marginTop: 1 }}>✕</span>
-                      <span style={{ ...BODY, fontSize: 13, lineHeight: 1.55 }}>{m}</span>
-                    </div>
-                  ))}
-                </div>
-              </SceneSection>
-            )}
-
-            {/* SCENE 06 — STUDY PLAN */}
-            {result.studyPlan?.length > 0 && (
-              <SceneSection label="Scene 06" title="Study Plan" subtitle="60-minute countdown — follow in order">
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {result.studyPlan.map((phase, i) => {
-                    const isActive = timerRunning && i === currentPhase
+                  {(result.misconceptions || result.commonMisconceptions || result.commonMistakes || []).map((m, i) => {
+                    const isMythReality = m && typeof m === 'object' && m.myth
                     return (
                       <div key={i} style={{
-                        padding: '14px 16px', borderRadius: 12,
-                        background: isActive ? 'rgba(59,130,246,0.08)' : 'rgba(255,255,255,0.03)',
-                        border: `1px solid ${isActive ? 'rgba(59,130,246,0.25)' : 'rgba(255,255,255,0.06)'}`,
-                        borderLeft: `3px solid ${isActive ? BLUE : 'rgba(255,255,255,0.08)'}`,
-                        transition: 'all 0.3s',
+                        padding: '12px 14px', borderRadius: 10,
+                        background: 'rgba(239,68,68,0.05)',
+                        border: '1px solid rgba(239,68,68,0.12)',
+                        borderLeft: '3px solid rgba(239,68,68,0.5)',
                       }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-                          <span style={{ color: isActive ? BLUE : '#fff', fontWeight: 800, fontSize: 14 }}>
-                            {isActive && <span style={{ marginRight: 6 }}>▶</span>}{phase.title}
-                          </span>
-                          <span style={{
-                            fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 6,
-                            background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.45)',
-                          }}>{phase.minutes} min</span>
-                        </div>
-                        <p style={{ ...BODY, fontSize: 12, lineHeight: 1.55 }}>{phase.description}</p>
+                        {isMythReality ? (
+                          <>
+                            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 6 }}>
+                              <span style={{ color: '#ef4444', fontWeight: 900, fontSize: 11, flexShrink: 0, marginTop: 1 }}>✕ MYTH</span>
+                              <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, lineHeight: 1.5, fontStyle: 'italic' }}>{m.myth}</span>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                              <span style={{ color: '#34d399', fontWeight: 900, fontSize: 11, flexShrink: 0, marginTop: 1 }}>✓ FACT</span>
+                              <span style={{ color: 'rgba(255,255,255,0.75)', fontSize: 12, lineHeight: 1.5 }}>{m.reality}</span>
+                            </div>
+                          </>
+                        ) : (
+                          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                            <span style={{ color: '#ef4444', fontWeight: 900, fontSize: 12, flexShrink: 0, marginTop: 1 }}>✕</span>
+                            <span style={{ ...BODY, fontSize: 13, lineHeight: 1.55 }}>{typeof m === 'string' ? m : JSON.stringify(m)}</span>
+                          </div>
+                        )}
                       </div>
                     )
                   })}
                 </div>
+              </SceneSection>
+            )}
 
-                {/* Timer */}
-                <div style={{ marginTop: 20, padding: '20px', background: 'rgba(255,255,255,0.03)', borderRadius: 14, border: BORDER, textAlign: 'center' }}>
-                  <div style={{ position: 'relative', width: 120, height: 120, margin: '0 auto 16px' }}>
-                    <svg width="120" height="120" viewBox="0 0 120 120" style={{ transform: 'rotate(-90deg)' }}>
-                      <circle cx="60" cy="60" r="54" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="7" />
-                      <circle cx="60" cy="60" r="54" fill="none"
-                        stroke={secondsLeft <= 300 ? '#ef4444' : BLUE}
-                        strokeWidth="7" strokeLinecap="round"
-                        strokeDasharray={circumference}
-                        strokeDashoffset={circumference - (timerPercent / 100) * circumference}
-                        style={{ transition: 'stroke-dashoffset 1s linear', filter: `drop-shadow(0 0 6px ${secondsLeft <= 300 ? 'rgba(239,68,68,0.5)' : 'rgba(59,130,246,0.5)'})` }}
-                      />
-                    </svg>
-                    <div style={{
-                      position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
-                      alignItems: 'center', justifyContent: 'center',
+            {/* SCENE 06 — removed (cheat sheet now shown at top) */}
+            {false && result.cheatSheet?.length > 0 && (
+              <SceneSection label="Scene 06" title="Cheat Sheet" subtitle="Direct facts to memorize — pull these into your head">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {result.cheatSheet.map((fact, i) => (
+                    <div key={i} style={{
+                      display: 'flex', alignItems: 'flex-start', gap: 10,
+                      padding: '10px 14px', borderRadius: 10,
+                      background: 'rgba(255,255,255,0.03)',
+                      borderLeft: `3px solid ${BLUE}55`,
+                      border: '1px solid rgba(255,255,255,0.06)',
                     }}>
                       <span style={{
-                        fontSize: 22, fontWeight: 900, fontFamily: 'ui-monospace, monospace',
-                        color: secondsLeft <= 300 ? '#ef4444' : CYAN,
-                      }}>{formatTime(secondsLeft)}</span>
-                      <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', letterSpacing: '0.1em', marginTop: 2 }}>
-                        {secondsLeft === 0 ? 'DONE' : `PHASE ${currentPhase + 1}`}
-                      </span>
+                        fontSize: 10, fontWeight: 900, color: BLUE,
+                        flexShrink: 0, marginTop: 1, fontFamily: 'ui-monospace, monospace',
+                      }}>{String(i + 1).padStart(2, '0')}</span>
+                      <span style={{ ...BODY, fontSize: 13, lineHeight: 1.55 }}>{fact}</span>
                     </div>
-                  </div>
-                  <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
-                    <button
-                      onClick={() => {
-                        if (!timerRunning && secondsLeft === STUDY_PLAN_DURATION * 60) {
-                          setSecondsLeft(STUDY_PLAN_DURATION * 60)
-                          setCurrentPhase(0)
-                        }
-                        setTimerRunning(t => !t)
-                      }}
-                      style={{
-                        padding: '9px 20px', borderRadius: 10, fontSize: 13, fontWeight: 700,
-                        background: `linear-gradient(135deg, ${BLUE}, ${CYAN})`, color: '#fff',
-                        border: 'none', cursor: 'pointer',
-                      }}>
-                      {timerRunning ? '⏸ Pause' : secondsLeft === STUDY_PLAN_DURATION * 60 ? '▶ Start Timer' : '▶ Resume'}
-                    </button>
-                    {(timerRunning || secondsLeft < STUDY_PLAN_DURATION * 60) && (
-                      <button
-                        onClick={() => { setTimerRunning(false); setSecondsLeft(STUDY_PLAN_DURATION * 60); setCurrentPhase(0) }}
-                        style={{
-                          padding: '9px 16px', borderRadius: 10, fontSize: 13, fontWeight: 700,
-                          background: 'rgba(239,68,68,0.08)', color: '#ef4444',
-                          border: '1px solid rgba(239,68,68,0.15)', cursor: 'pointer',
-                        }}>Reset</button>
-                    )}
-                  </div>
+                  ))}
                 </div>
               </SceneSection>
             )}
