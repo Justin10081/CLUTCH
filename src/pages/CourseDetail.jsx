@@ -4,6 +4,8 @@ import { motion, AnimatePresence, useScroll, useTransform, useSpring } from 'mot
 import { useCourses } from '../context/CoursesContext'
 import { useDeadlines } from '../context/DeadlinesContext'
 import { extractTextFromFile, parseSyllabus, syllabusToDeadlines } from '../utils/syllabusParser'
+import ClutchResultView from '../components/ClutchResultView'
+import { loadClutchResultForCourse } from './ClutchMode'
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 const ease = [0.16, 1, 0.3, 1]
@@ -853,41 +855,60 @@ export default function CourseDetail() {
           )}
 
           {/* ════════════════ CLUTCH ════════════════ */}
-          {activeTab === 5 && (
-            <motion.div key="clutch" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.3, ease }} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-              <motion.div
-                whileHover={{ scale: 1.005 }}
-                style={{ padding: '48px 36px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(59,130,246,0.2)', borderRadius: 18, textAlign: 'center', position: 'relative', overflow: 'hidden' }}>
-                <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: 500, height: 250, borderRadius: '50%', background: 'radial-gradient(ellipse, rgba(59,130,246,0.08) 0%, transparent 70%)', pointerEvents: 'none' }} />
-                <motion.div animate={{ boxShadow: ['0 0 24px rgba(59,130,246,0.3)', '0 0 44px rgba(59,130,246,0.5)', '0 0 24px rgba(59,130,246,0.3)'] }} transition={{ duration: 2.5, repeat: Infinity }} style={{ width: 60, height: 60, borderRadius: 18, margin: '0 auto 20px', background: 'linear-gradient(135deg, #3b82f6, #06b6d4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <svg width="28" height="28" fill="none" viewBox="0 0 24 24" stroke="white" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                </motion.div>
-                <h3 style={{ fontSize: 24, fontWeight: 900, color: 'white', margin: '0 0 10px', letterSpacing: '-0.03em' }}>Clutch Mode</h3>
-                <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.4)', margin: '0 0 32px', lineHeight: 1.65, maxWidth: 380, marginLeft: 'auto', marginRight: 'auto' }}>
-                  AI teaches you from your uploaded materials. Flashcards, quizzes, study guides — all from your actual notes.
-                </p>
-                <Link to="/clutch" state={{ courseId: id, courseName: course.name, courseCode: course.code, courseColor: course.color, materials: course.materials || [] }} style={{ textDecoration: 'none' }}>
-                  <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }} style={{ display: 'inline-flex', alignItems: 'center', gap: 10, padding: '16px 40px', background: 'linear-gradient(135deg, #3b82f6, #06b6d4)', borderRadius: 12, color: 'white', fontSize: 13, fontWeight: 900, letterSpacing: '0.14em', textTransform: 'uppercase', boxShadow: '0 0 36px rgba(59,130,246,0.4)' }}>
-                    START SESSION
-                    <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                  </motion.div>
-                </Link>
+          {activeTab === 5 && (() => {
+            const savedClutch = loadClutchResultForCourse(id)
+            return (
+              <motion.div key="clutch" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.3, ease }}>
+                {savedClutch ? (
+                  /* ── Saved result view ── */
+                  <div>
+                    <ClutchResultView
+                      result={savedClutch.result}
+                      topic={savedClutch.topic}
+                      courseName={course.name}
+                      uploadedFiles={(savedClutch.filesUsed || []).map(name => ({ name }))}
+                      embedded
+                      onNewSession={() => navigate('/clutch', { state: { courseId: id, courseName: course.name, courseCode: course.code, courseColor: course.color, materials: course.materials || [] } })}
+                    />
+                  </div>
+                ) : (
+                  /* ── Empty state ── */
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                    <motion.div whileHover={{ scale: 1.005 }}
+                      style={{ padding: '48px 36px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(59,130,246,0.2)', borderRadius: 18, textAlign: 'center', position: 'relative', overflow: 'hidden' }}>
+                      <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: 500, height: 250, borderRadius: '50%', background: 'radial-gradient(ellipse, rgba(59,130,246,0.08) 0%, transparent 70%)', pointerEvents: 'none' }} />
+                      <motion.div animate={{ boxShadow: ['0 0 24px rgba(59,130,246,0.3)', '0 0 44px rgba(59,130,246,0.5)', '0 0 24px rgba(59,130,246,0.3)'] }} transition={{ duration: 2.5, repeat: Infinity }}
+                        style={{ width: 60, height: 60, borderRadius: 18, margin: '0 auto 20px', background: 'linear-gradient(135deg, #3b82f6, #06b6d4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <svg width="28" height="28" fill="none" viewBox="0 0 24 24" stroke="white" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                      </motion.div>
+                      <h3 style={{ fontSize: 24, fontWeight: 900, color: 'white', margin: '0 0 10px', letterSpacing: '-0.03em' }}>Clutch Mode</h3>
+                      <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.4)', margin: '0 0 32px', lineHeight: 1.65, maxWidth: 380, marginLeft: 'auto', marginRight: 'auto' }}>
+                        AI teaches you from your uploaded materials. Your last session will always be saved here.
+                      </p>
+                      <Link to="/clutch" state={{ courseId: id, courseName: course.name, courseCode: course.code, courseColor: course.color, materials: course.materials || [] }} style={{ textDecoration: 'none' }}>
+                        <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }} style={{ display: 'inline-flex', alignItems: 'center', gap: 10, padding: '16px 40px', background: 'linear-gradient(135deg, #3b82f6, #06b6d4)', borderRadius: 12, color: 'white', fontSize: 13, fontWeight: 900, letterSpacing: '0.14em', textTransform: 'uppercase', boxShadow: '0 0 36px rgba(59,130,246,0.4)' }}>
+                          START SESSION
+                          <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                        </motion.div>
+                      </Link>
+                    </motion.div>
+                    {(course.materials?.length > 0 || course.syllabusText) && (
+                      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} style={{ padding: '18px 22px', background: 'rgba(52,211,153,0.04)', border: '1px solid rgba(52,211,153,0.12)', borderRadius: 12 }}>
+                        <div style={{ fontSize: 10, fontWeight: 800, color: '#34d399', letterSpacing: '0.15em', textTransform: 'uppercase', marginBottom: 8 }}>Ready to teach</div>
+                        <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', margin: '0 0 10px', lineHeight: 1.6 }}>
+                          {(course.materials?.length || 0) + (course.syllabusText ? 1 : 0)} source{(course.materials?.length || 0) + (course.syllabusText ? 1 : 0) !== 1 ? 's' : ''} ready.
+                        </p>
+                        {course.syllabusText && <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', display: 'flex', alignItems: 'center', gap: 8 }}><span>📋</span> {course.syllabusName || 'Syllabus'}</div>}
+                        {(course.materials || []).slice(0, 4).map(m => (
+                          <div key={m.id} style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 4, display: 'flex', alignItems: 'center', gap: 8 }}><span>{fileIcon(m.type)}</span> <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.name}</span></div>
+                        ))}
+                      </motion.div>
+                    )}
+                  </div>
+                )}
               </motion.div>
-
-              {(course.materials?.length > 0 || course.syllabusText) && (
-                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} style={{ padding: '18px 22px', background: 'rgba(52,211,153,0.04)', border: '1px solid rgba(52,211,153,0.12)', borderRadius: 12 }}>
-                  <div style={{ fontSize: 10, fontWeight: 800, color: '#34d399', letterSpacing: '0.15em', textTransform: 'uppercase', marginBottom: 8 }}>Ready to teach</div>
-                  <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', margin: '0 0 10px', lineHeight: 1.6 }}>
-                    {(course.materials?.length || 0) + (course.syllabusText ? 1 : 0)} source{(course.materials?.length || 0) + (course.syllabusText ? 1 : 0) !== 1 ? 's' : ''} ready. The AI will focus on your exam-critical content.
-                  </p>
-                  {course.syllabusText && <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', display: 'flex', alignItems: 'center', gap: 8 }}><span>📋</span> {course.syllabusName || 'Syllabus'}</div>}
-                  {(course.materials || []).slice(0, 4).map(m => (
-                    <div key={m.id} style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 4, display: 'flex', alignItems: 'center', gap: 8 }}><span>{fileIcon(m.type)}</span> <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.name}</span></div>
-                  ))}
-                </motion.div>
-              )}
-            </motion.div>
-          )}
+            )
+          })()}
         </AnimatePresence>
       </div>
     </div>
