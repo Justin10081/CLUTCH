@@ -1,9 +1,9 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
-import { motion, AnimatePresence } from 'motion/react'
+import { useState, useMemo, useRef, useCallback, useEffect } from 'react'
+import { motion, AnimatePresence, useScroll, useTransform } from 'motion/react'
 import { useCourses } from '../context/CoursesContext'
 import { useDeadlines } from '../context/DeadlinesContext'
 
-// ─── Constants ───────────────────────────────────────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────────────────
 const EMPTY_DEADLINE = {
   title: '', course: '', courseId: '', courseColor: '',
   date: '', weight: 5, difficulty: 5, type: 'assignment', completed: false,
@@ -19,506 +19,56 @@ const TYPE_CONFIG = {
 }
 
 const ease = [0.16, 1, 0.3, 1]
+const DAYS_SHORT = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT']
 
-// ─── Styles ──────────────────────────────────────────────────────────────────
-const S = {
-  page: {
-    background: '#080a0e',
-    minHeight: '100vh',
-    paddingBottom: 120,
-    fontFamily: 'inherit',
-    position: 'relative',
-  },
-  sceneLabel: {
-    fontSize: 10,
-    fontWeight: 900,
-    letterSpacing: '0.2em',
-    textTransform: 'uppercase',
-    color: '#3b82f6',
-    marginBottom: 4,
-  },
-  heading: {
-    fontSize: 26,
-    fontWeight: 900,
-    color: '#f1f5f9',
-    letterSpacing: '-0.03em',
-    lineHeight: 1.1,
-  },
-  card: {
-    background: '#0d1117',
-    border: '1px solid #1e2530',
-    borderRadius: 16,
-  },
-  input: {
-    background: '#131922',
-    border: '1px solid #1e2530',
-    borderRadius: 10,
-    color: '#f1f5f9',
-    fontSize: 13,
-    fontWeight: 600,
-    padding: '10px 14px',
-    outline: 'none',
-    width: '100%',
-    boxSizing: 'border-box',
-    transition: 'border-color 0.2s',
-    WebkitAppearance: 'none',
-  },
-  select: {
-    background: '#131922',
-    border: '1px solid #1e2530',
-    borderRadius: 10,
-    color: '#f1f5f9',
-    fontSize: 13,
-    fontWeight: 600,
-    padding: '10px 14px',
-    outline: 'none',
-    width: '100%',
-    boxSizing: 'border-box',
-    cursor: 'pointer',
-  },
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function getDangerScore(d) {
+  if (d.completed) return 0
+  const daysLeft = Math.max(0, (new Date(d.date) - new Date()) / 86400000)
+  let u = daysLeft <= 0 ? 10 : daysLeft <= 1 ? 9 : daysLeft <= 2 ? 8 : daysLeft <= 3 ? 7 : daysLeft <= 5 ? 5 : daysLeft <= 7 ? 3 : daysLeft <= 14 ? 2 : 1
+  return Math.round(((u * 3) + ((d.weight || 5) * 1.5) + (d.difficulty || 5)) / 5.5 * 10) / 10
 }
 
-// ─── Danger color ─────────────────────────────────────────────────────────────
 function dangerColor(score) {
   if (score >= 8) return '#ef4444'
   if (score >= 6) return '#f97316'
-  if (score >= 4) return '#f59e0b'
-  return '#22c55e'
+  if (score >= 4) return '#fbbf24'
+  return '#34d399'
 }
 
-// ─── Countdown formatter ──────────────────────────────────────────────────────
 function getTimeLeft(dateStr) {
-  const now = new Date(), due = new Date(dateStr), diff = due - now
+  const diff = new Date(dateStr) - new Date()
   if (diff < 0) {
-    const hoursOver = Math.abs(Math.floor(diff / (1000 * 60 * 60)))
-    const daysOver = Math.floor(hoursOver / 24)
-    return { text: 'OVERDUE', sub: daysOver > 0 ? `${daysOver}d ago` : `${hoursOver}h ago`, color: '#ef4444', urgent: true }
+    const d = Math.floor(Math.abs(diff) / 86400000)
+    return { text: 'OVERDUE', sub: d > 0 ? `${d}d ago` : 'today', color: '#ef4444', urgent: true }
   }
-  const totalHours = Math.floor(diff / (1000 * 60 * 60))
-  const days = Math.floor(totalHours / 24)
-  const hours = totalHours % 24
-  if (totalHours < 24) return { text: `${totalHours}h`, sub: 'remaining', color: '#ef4444', urgent: true }
-  if (days <= 2) return { text: `${days}d ${hours}h`, sub: 'remaining', color: '#ef4444', urgent: true }
-  if (days <= 5) return { text: `${days}`, sub: 'days left', color: '#f59e0b', urgent: false }
-  if (days <= 14) return { text: `${days}`, sub: 'days left', color: '#22c55e', urgent: false }
-  return { text: `${days}`, sub: 'days left', color: '#475569', urgent: false }
+  const hours = Math.floor(diff / 3600000)
+  const days = Math.floor(hours / 24)
+  if (hours < 24) return { text: `${hours}h`, sub: 'left', color: '#ef4444', urgent: true }
+  if (days <= 2) return { text: `${days}d`, sub: 'left', color: '#f87171', urgent: true }
+  if (days <= 5) return { text: `${days}d`, sub: 'left', color: '#fbbf24', urgent: false }
+  if (days <= 14) return { text: `${days}d`, sub: 'left', color: '#34d399', urgent: false }
+  return { text: `${days}d`, sub: 'left', color: '#475569', urgent: false }
 }
 
-// ─── Danger score ─────────────────────────────────────────────────────────────
-function getDangerScore(d) {
-  if (d.completed) return 0
-  const now = new Date(), due = new Date(d.date)
-  const daysLeft = Math.max(0, (due - now) / (1000 * 60 * 60 * 24))
-  let urgency
-  if (daysLeft <= 0) urgency = 10
-  else if (daysLeft <= 1) urgency = 9
-  else if (daysLeft <= 2) urgency = 8
-  else if (daysLeft <= 3) urgency = 7
-  else if (daysLeft <= 5) urgency = 5
-  else if (daysLeft <= 7) urgency = 3
-  else if (daysLeft <= 14) urgency = 2
-  else urgency = 1
-  return Math.round(((urgency * 3) + (d.weight * 1.5) + (d.difficulty)) / 5.5 * 10) / 10
-}
-
-// ─── Notification helpers ─────────────────────────────────────────────────────
-function scheduleNotifications(deadlines) {
-  if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
-  deadlines.filter(d => !d.completed && d.date).forEach(d => {
-    const due = new Date(d.date)
-    const now = new Date()
-    const msLeft = due - now
-    const hoursLeft = msLeft / (1000 * 60 * 60)
-    if (hoursLeft > 0 && hoursLeft <= 48) {
-      const timeoutMs = Math.max(msLeft - (2 * 60 * 60 * 1000), 500) // notify 2h before due
-      if (timeoutMs < msLeft && timeoutMs > 0) {
-        setTimeout(() => {
-          try {
-            new Notification(`CLUTCH — Due Soon: ${d.title}`, {
-              body: `${d.course ? d.course + ' · ' : ''}Due in 2 hours`,
-              icon: '/favicon.ico',
-              tag: `clutch-deadline-${d.title}`,
-            })
-          } catch (_) {}
-        }, timeoutMs)
-      }
-    }
-  })
-}
-
-// ─── Timeline view ────────────────────────────────────────────────────────────
-function TimelineView({ deadlines }) {
-  if (deadlines.length === 0) {
-    return (
-      <div style={{ padding: '40px 20px', textAlign: 'center', color: '#334155', fontWeight: 700, fontSize: 13 }}>
-        No deadlines to display on the timeline.
-      </div>
-    )
-  }
-
-  // Group by week
-  const now = new Date()
-  const weeks = {}
-  deadlines.forEach(d => {
-    const due = new Date(d.date)
-    const diffDays = Math.floor((due - now) / (1000 * 60 * 60 * 24))
-    const weekNum = diffDays < 0 ? -1 : Math.floor(diffDays / 7)
-    const key = weekNum
-    if (!weeks[key]) weeks[key] = []
-    weeks[key].push(d)
-  })
-
-  const weekKeys = Object.keys(weeks).map(Number).sort((a, b) => a - b)
-
-  const weekLabel = (wk) => {
-    if (wk < 0) return 'OVERDUE'
-    if (wk === 0) return 'THIS WEEK'
-    if (wk === 1) return 'NEXT WEEK'
-    return `IN ${wk} WEEKS`
-  }
-
-  return (
-    <div style={{ padding: '0 20px', display: 'flex', flexDirection: 'column', gap: 24 }}>
-      {weekKeys.map(wk => (
-        <div key={wk}>
-          {/* Week header */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-            <div style={{
-              fontSize: 9, fontWeight: 900, letterSpacing: '0.2em', textTransform: 'uppercase',
-              color: wk < 0 ? '#ef4444' : wk === 0 ? '#f59e0b' : '#334155',
-              whiteSpace: 'nowrap',
-            }}>
-              {weekLabel(wk)}
-            </div>
-            <div style={{ flex: 1, height: 1, background: '#1e2530' }} />
-          </div>
-          {/* Timeline track */}
-          <div style={{ position: 'relative', paddingLeft: 24 }}>
-            {/* Vertical line */}
-            <div style={{
-              position: 'absolute', left: 8, top: 0, bottom: 0,
-              width: 2, background: '#1e2530',
-            }} />
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {weeks[wk].map((d, i) => {
-                const tl = getTimeLeft(d.date)
-                const score = getDangerScore(d)
-                const dc = dangerColor(score)
-                const type = TYPE_CONFIG[d.type] || TYPE_CONFIG.other
-                const dueDate = new Date(d.date)
-                const dateStr = dueDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-                const timeStr = dueDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-                return (
-                  <div key={i} style={{ position: 'relative', display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-                    {/* Dot */}
-                    <div style={{
-                      position: 'absolute', left: -20, top: 14,
-                      width: 8, height: 8, borderRadius: '50%',
-                      background: d.completed ? '#334155' : dc,
-                      boxShadow: d.completed ? 'none' : `0 0 6px ${dc}80`,
-                      flexShrink: 0,
-                    }} />
-                    <div style={{
-                      ...S.card,
-                      padding: '12px 14px',
-                      flex: 1,
-                      borderLeft: `3px solid ${d.completed ? '#1e2530' : (d.courseColor || dc)}`,
-                      opacity: d.completed ? 0.4 : 1,
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{
-                            fontSize: 13, fontWeight: 900, color: '#f1f5f9',
-                            textDecoration: d.completed ? 'line-through' : 'none',
-                          }}>{d.title}</div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
-                            {d.course && <span style={{ fontSize: 10, color: '#475569', fontWeight: 700 }}>{d.course}</span>}
-                            <span style={{
-                              fontSize: 9, fontWeight: 900, padding: '2px 7px', borderRadius: 6,
-                              background: `${type.color}20`, color: type.color,
-                            }}>{type.label}</span>
-                          </div>
-                        </div>
-                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                          <div style={{ fontSize: 11, fontWeight: 900, color: tl.color }}>{tl.text}</div>
-                          <div style={{ fontSize: 9, color: '#334155', marginTop: 1 }}>{dateStr} {timeStr}</div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-// ─── Deadline card ────────────────────────────────────────────────────────────
-function DeadlineCard({ d, onComplete, onEdit, onDelete, onSelect, selected, idx }) {
-  const [completing, setCompleting] = useState(false)
-  const [holdTimer, setHoldTimer] = useState(null)
-  const [holdProgress, setHoldProgress] = useState(0)
-  const holdIntervalRef = useRef(null)
-
-  const score = getDangerScore(d)
-  const dc = dangerColor(score)
-  const tl = getTimeLeft(d.date)
-  const type = TYPE_CONFIG[d.type] || TYPE_CONFIG.other
-  const dueDate = new Date(d.date)
-  const dateStr = dueDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-  const timeStr = dueDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-
-  const handleHoldStart = () => {
-    if (d.completed) return
-    let progress = 0
-    holdIntervalRef.current = setInterval(() => {
-      progress += 4
-      setHoldProgress(progress)
-      if (progress >= 100) {
-        clearInterval(holdIntervalRef.current)
-        setCompleting(true)
-        setTimeout(() => {
-          onComplete(d.originalIndex)
-          setCompleting(false)
-          setHoldProgress(0)
-        }, 400)
-      }
-    }, 25)
-  }
-  const handleHoldEnd = () => {
-    clearInterval(holdIntervalRef.current)
-    if (holdProgress < 100) setHoldProgress(0)
-  }
-
-  const courseBarColor = d.courseColor || dc
-
-  return (
-    <AnimatePresence>
-      {!completing && (
-        <motion.div
-          layout
-          initial={{ opacity: 0, y: 14, x: 0 }}
-          animate={{ opacity: 1, y: 0, x: 0 }}
-          exit={{ opacity: 0, x: 80, transition: { duration: 0.3 } }}
-          transition={{ delay: idx * 0.04, duration: 0.35, ease }}
-          style={{
-            ...S.card,
-            borderLeft: `4px solid ${d.completed ? '#1e2530' : courseBarColor}`,
-            opacity: d.completed ? 0.45 : 1,
-            position: 'relative',
-            overflow: 'hidden',
-            cursor: 'default',
-          }}>
-
-          {/* Hold-to-complete progress bar */}
-          {holdProgress > 0 && (
-            <div style={{
-              position: 'absolute', top: 0, left: 0, height: 3,
-              width: `${holdProgress}%`, background: '#22c55e',
-              transition: 'width 0.025s linear',
-              boxShadow: '0 0 8px #22c55e80',
-            }} />
-          )}
-
-          <div style={{ padding: '14px 14px 12px' }}>
-            {/* Row 1: checkbox + title + countdown */}
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-              {/* Checkbox */}
-              <motion.button
-                whileTap={{ scale: 0.85 }}
-                onClick={() => onComplete(d.originalIndex)}
-                style={{
-                  width: 20, height: 20, borderRadius: '50%', flexShrink: 0, marginTop: 1,
-                  border: `2px solid ${d.completed ? '#22c55e' : dc}`,
-                  background: d.completed ? '#22c55e' : 'transparent',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  cursor: 'pointer', transition: 'all 0.2s',
-                }}>
-                {d.completed && (
-                  <svg width={10} height={10} fill="none" viewBox="0 0 24 24" stroke="white" strokeWidth={3}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                  </svg>
-                )}
-              </motion.button>
-
-              {/* Batch select */}
-              <motion.button
-                whileTap={{ scale: 0.9 }}
-                onClick={() => onSelect(d.originalIndex)}
-                style={{
-                  width: 18, height: 18, borderRadius: 4, flexShrink: 0, marginTop: 2,
-                  border: `1.5px solid ${selected ? '#3b82f6' : '#1e2530'}`,
-                  background: selected ? '#3b82f6' : 'transparent',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  cursor: 'pointer', transition: 'all 0.15s',
-                }}>
-                {selected && (
-                  <svg width={8} height={8} fill="none" viewBox="0 0 24 24" stroke="white" strokeWidth={3.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                  </svg>
-                )}
-              </motion.button>
-
-              {/* Center content */}
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 4 }}>
-                  <span style={{
-                    fontSize: 14, fontWeight: 900, color: '#f1f5f9',
-                    textDecoration: d.completed ? 'line-through' : 'none',
-                  }}>{d.title}</span>
-                  <span style={{
-                    fontSize: 9, fontWeight: 900, padding: '2px 8px', borderRadius: 6,
-                    background: `${type.color}20`, color: type.color, flexShrink: 0,
-                  }}>{type.label}</span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  {d.courseColor && (
-                    <span style={{
-                      width: 6, height: 6, borderRadius: '50%',
-                      background: d.courseColor, display: 'inline-block', flexShrink: 0,
-                    }} />
-                  )}
-                  {d.course && <span style={{ fontSize: 11, color: '#475569', fontWeight: 700 }}>{d.course}</span>}
-                  <span style={{ fontSize: 11, color: '#334155' }}>{dateStr} · {timeStr}</span>
-                </div>
-              </div>
-
-              {/* Countdown */}
-              <div style={{
-                textAlign: 'right', flexShrink: 0, minWidth: 52,
-                paddingLeft: 8,
-              }}>
-                <div style={{ fontSize: 20, fontWeight: 900, color: tl.color, letterSpacing: '-0.03em', lineHeight: 1 }}>
-                  {tl.text}
-                </div>
-                <div style={{ fontSize: 9, color: '#334155', marginTop: 2, fontWeight: 700, textTransform: 'uppercase' }}>
-                  {tl.sub}
-                </div>
-              </div>
-            </div>
-
-            {/* Row 2: danger bar + actions */}
-            {!d.completed && (
-              <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10 }}>
-                {/* Danger score ring + bar */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1 }}>
-                  {/* Ring */}
-                  <svg width={22} height={22} style={{ flexShrink: 0 }}>
-                    <circle cx={11} cy={11} r={8} fill="none" stroke="#1e2530" strokeWidth={2.5} />
-                    <circle cx={11} cy={11} r={8} fill="none" stroke={dc} strokeWidth={2.5}
-                      strokeDasharray={`${2 * Math.PI * 8}`}
-                      strokeDashoffset={`${2 * Math.PI * 8 * (1 - score / 10)}`}
-                      strokeLinecap="round"
-                      transform="rotate(-90 11 11)"
-                      style={{ filter: `drop-shadow(0 0 3px ${dc}80)` }}
-                    />
-                  </svg>
-                  {/* Bar */}
-                  <div style={{ flex: 1, height: 4, background: '#1e2530', borderRadius: 99, overflow: 'hidden' }}>
-                    <motion.div
-                      initial={{ width: 0 }}
-                      animate={{ width: `${(score / 10) * 100}%` }}
-                      transition={{ duration: 0.6, delay: idx * 0.03, ease }}
-                      style={{
-                        height: '100%', borderRadius: 99,
-                        background: dc,
-                        boxShadow: `0 0 6px ${dc}60`,
-                      }}
-                    />
-                  </div>
-                  <span style={{ fontSize: 10, fontWeight: 900, color: dc, flexShrink: 0, width: 24, textAlign: 'right' }}>
-                    {score.toFixed(1)}
-                  </span>
-                </div>
-
-                {/* Action buttons */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-                  {/* Hold-to-complete */}
-                  <button
-                    onMouseDown={handleHoldStart}
-                    onMouseUp={handleHoldEnd}
-                    onMouseLeave={handleHoldEnd}
-                    onTouchStart={handleHoldStart}
-                    onTouchEnd={handleHoldEnd}
-                    title="Hold to complete"
-                    style={{
-                      width: 28, height: 28, borderRadius: 8, border: 'none',
-                      background: '#0f1f14', color: '#22c55e',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      cursor: 'pointer', transition: 'background 0.15s',
-                    }}>
-                    <svg width={12} height={12} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                    </svg>
-                  </button>
-                  <button onClick={() => onEdit(d.originalIndex)} style={{
-                    width: 28, height: 28, borderRadius: 8, border: 'none',
-                    background: '#131922', color: '#475569',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    cursor: 'pointer', transition: 'background 0.15s',
-                  }}>
-                    <svg width={12} height={12} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                    </svg>
-                  </button>
-                  <button onClick={() => onDelete(d.originalIndex)} style={{
-                    width: 28, height: 28, borderRadius: 8, border: 'none',
-                    background: '#1f0f0f', color: '#ef4444',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    cursor: 'pointer', transition: 'background 0.15s',
-                  }}>
-                    <svg width={12} height={12} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Completed card: just edit + delete */}
-            {d.completed && (
-              <div style={{ marginTop: 8, display: 'flex', justifyContent: 'flex-end', gap: 4 }}>
-                <button onClick={() => onEdit(d.originalIndex)} style={{
-                  width: 26, height: 26, borderRadius: 8, border: 'none',
-                  background: '#131922', color: '#475569',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-                }}>
-                  <svg width={11} height={11} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                  </svg>
-                </button>
-                <button onClick={() => onDelete(d.originalIndex)} style={{
-                  width: 26, height: 26, borderRadius: 8, border: 'none',
-                  background: '#1f0f0f', color: '#ef4444',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-                }}>
-                  <svg width={11} height={11} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-            )}
-          </div>
-        </motion.div>
-      )}
-    </AnimatePresence>
-  )
-}
-
-// ─── Calendar view ────────────────────────────────────────────────────────────
+// ─── Calendar ─────────────────────────────────────────────────────────────────
 function CalendarView({ deadlines, onEdit, onAddForDate }) {
   const [month, setMonth] = useState(() => {
     const d = new Date()
     return new Date(d.getFullYear(), d.getMonth(), 1)
   })
+  const [dir, setDir] = useState(0) // -1 prev, 1 next
 
   const todayStr = new Date().toISOString().slice(0, 10)
-  const monthLabel = month.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+
+  const navigate = (d) => {
+    setDir(d)
+    setMonth(m => new Date(m.getFullYear(), m.getMonth() + d, 1))
+  }
+
   const firstDay = month.getDay()
   const daysInMonth = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate()
+  const monthKey = `${month.getFullYear()}-${month.getMonth()}`
 
   const cells = []
   for (let i = 0; i < 42; i++) {
@@ -528,63 +78,215 @@ function CalendarView({ deadlines, onEdit, onAddForDate }) {
     cells.push({ day: d, dateStr })
   }
 
+  // Trim trailing empty rows
+  while (cells.length > 7 && cells.slice(-7).every(c => c === null)) cells.splice(-7)
+
   const byDate = {}
   deadlines.forEach(d => {
     const key = d.date?.slice(0, 10)
     if (key) { if (!byDate[key]) byDate[key] = []; byDate[key].push(d) }
   })
 
+  const monthLabel = month.toLocaleDateString('en-US', { month: 'long' })
+  const yearLabel = month.getFullYear()
+
   return (
-    <div style={{ ...S.card, padding: '20px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-        <button onClick={() => setMonth(m => new Date(m.getFullYear(), m.getMonth() - 1, 1))}
-          style={{ width: 32, height: 32, borderRadius: 8, background: '#131922', border: '1px solid #1e2530', color: '#f1f5f9', fontSize: 18, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>‹</button>
-        <div style={{ fontSize: 15, fontWeight: 900, color: '#f1f5f9', letterSpacing: '-0.02em' }}>{monthLabel}</div>
-        <button onClick={() => setMonth(m => new Date(m.getFullYear(), m.getMonth() + 1, 1))}
-          style={{ width: 32, height: 32, borderRadius: 8, background: '#131922', border: '1px solid #1e2530', color: '#f1f5f9', fontSize: 18, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>›</button>
+    <div style={{ position: 'relative', overflow: 'hidden' }}>
+      {/* Month nav */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+        <motion.button
+          whileHover={{ scale: 1.08, background: 'rgba(59,130,246,0.12)' }}
+          whileTap={{ scale: 0.93 }}
+          onClick={() => navigate(-1)}
+          style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.6)', fontSize: 20, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.15s' }}>
+          ‹
+        </motion.button>
+
+        <AnimatePresence mode="wait">
+          <motion.div key={monthKey}
+            initial={{ opacity: 0, y: dir > 0 ? 14 : -14 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: dir > 0 ? -14 : 14 }}
+            transition={{ duration: 0.28, ease }}
+            style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: 'clamp(22px,4vw,32px)', fontWeight: 900, letterSpacing: '-0.04em', color: 'white', lineHeight: 1 }}>{monthLabel}</div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.3)', letterSpacing: '0.15em', marginTop: 2 }}>{yearLabel}</div>
+          </motion.div>
+        </AnimatePresence>
+
+        <motion.button
+          whileHover={{ scale: 1.08, background: 'rgba(59,130,246,0.12)' }}
+          whileTap={{ scale: 0.93 }}
+          onClick={() => navigate(1)}
+          style={{ width: 38, height: 38, borderRadius: 10, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.6)', fontSize: 20, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.15s' }}>
+          ›
+        </motion.button>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 3, marginBottom: 6 }}>
-        {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => (
-          <div key={d} style={{ textAlign: 'center', fontSize: 9, fontWeight: 800, letterSpacing: '0.1em', color: '#334155', paddingBottom: 4 }}>{d}</div>
+
+      {/* Day headers */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 8 }}>
+        {DAYS_SHORT.map(d => (
+          <div key={d} style={{ textAlign: 'center', fontSize: 9, fontWeight: 900, letterSpacing: '0.18em', color: 'rgba(255,255,255,0.2)', paddingBottom: 6 }}>{d}</div>
         ))}
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 3 }}>
-        {cells.map((cell, i) => {
-          if (!cell) return <div key={i} style={{ minHeight: 72 }} />
-          const items = byDate[cell.dateStr] || []
-          const isToday = cell.dateStr === todayStr
-          const isPast = cell.dateStr < todayStr
-          return (
-            <div key={i}
-              onClick={() => onAddForDate(cell.dateStr)}
-              style={{
-                minHeight: 72, padding: '5px 4px', cursor: 'pointer', borderRadius: 8,
-                background: isToday ? 'rgba(59,130,246,0.08)' : 'rgba(255,255,255,0.015)',
-                border: `1px solid ${isToday ? 'rgba(59,130,246,0.35)' : 'rgba(255,255,255,0.04)'}`,
-                opacity: isPast && items.length === 0 ? 0.3 : 1,
-                transition: 'background 0.15s',
-              }}>
-              <div style={{ fontSize: 11, fontWeight: isToday ? 900 : 500, color: isToday ? '#3b82f6' : '#64748b', textAlign: 'right', paddingRight: 2, marginBottom: 3 }}>{cell.day}</div>
-              {items.slice(0, 3).map(d => (
-                <div key={d.id}
-                  onClick={e => { e.stopPropagation(); onEdit(d) }}
-                  style={{
-                    fontSize: 9, fontWeight: 700, padding: '2px 4px', borderRadius: 3, marginBottom: 2,
-                    background: (d.courseColor || '#3b82f6') + '28', color: d.courseColor || '#3b82f6',
-                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    textDecoration: d.completed ? 'line-through' : 'none', opacity: d.completed ? 0.4 : 1, cursor: 'pointer',
-                  }}>{d.title}</div>
-              ))}
-              {items.length > 3 && <div style={{ fontSize: 9, color: '#475569', fontWeight: 700 }}>+{items.length - 3}</div>}
-            </div>
-          )
-        })}
-      </div>
+
+      {/* Grid */}
+      <AnimatePresence mode="wait">
+        <motion.div key={monthKey}
+          initial={{ opacity: 0, x: dir > 0 ? 40 : -40 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: dir > 0 ? -40 : 40 }}
+          transition={{ duration: 0.32, ease }}
+          style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
+          {cells.map((cell, i) => {
+            if (!cell) return <div key={i} style={{ minHeight: 80 }} />
+            const items = byDate[cell.dateStr] || []
+            const isToday = cell.dateStr === todayStr
+            const isPast = cell.dateStr < todayStr
+            const hasUrgent = items.some(d => !d.completed && getDangerScore(d) >= 7)
+
+            return (
+              <motion.div key={cell.dateStr}
+                whileHover={{ scale: 1.04, background: 'rgba(59,130,246,0.07)', borderColor: 'rgba(59,130,246,0.25)' }}
+                onClick={() => onAddForDate(cell.dateStr)}
+                style={{
+                  minHeight: 80, padding: '7px 6px', borderRadius: 10, cursor: 'pointer',
+                  background: isToday ? 'rgba(59,130,246,0.08)' : 'rgba(255,255,255,0.02)',
+                  border: `1px solid ${isToday ? 'rgba(59,130,246,0.4)' : 'rgba(255,255,255,0.05)'}`,
+                  opacity: isPast && items.length === 0 ? 0.25 : 1,
+                  transition: 'background 0.2s, border-color 0.2s, opacity 0.2s',
+                  position: 'relative',
+                }}>
+                {/* Day number */}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: 4 }}>
+                  {isToday ? (
+                    <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'linear-gradient(135deg,#3b82f6,#06b6d4)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 900, color: 'white', boxShadow: '0 0 12px rgba(59,130,246,0.5)' }}>
+                      {cell.day}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.35)' }}>{cell.day}</div>
+                  )}
+                </div>
+                {/* Urgent pulse */}
+                {hasUrgent && <div style={{ position: 'absolute', top: 6, left: 6, width: 5, height: 5, borderRadius: '50%', background: '#ef4444', boxShadow: '0 0 6px #ef4444' }} />}
+                {/* Deadline chips */}
+                {items.slice(0, 2).map(d => (
+                  <motion.div key={d.id}
+                    whileHover={{ scale: 1.05 }}
+                    onClick={e => { e.stopPropagation(); onEdit(d) }}
+                    style={{
+                      fontSize: 9, fontWeight: 700, padding: '2px 5px', borderRadius: 4, marginBottom: 2,
+                      background: (d.courseColor || '#3b82f6') + '25',
+                      color: d.courseColor || '#3b82f6',
+                      border: `1px solid ${(d.courseColor || '#3b82f6')}30`,
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      textDecoration: d.completed ? 'line-through' : 'none',
+                      opacity: d.completed ? 0.35 : 1, cursor: 'pointer',
+                    }}>{d.title}</motion.div>
+                ))}
+                {items.length > 2 && (
+                  <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.25)', fontWeight: 700, paddingLeft: 2 }}>+{items.length - 2}</div>
+                )}
+              </motion.div>
+            )
+          })}
+        </motion.div>
+      </AnimatePresence>
     </div>
   )
 }
 
-// ─── Main component ───────────────────────────────────────────────────────────
+// ─── Deadline row (urgency queue) ─────────────────────────────────────────────
+function DeadlineRow({ d, idx, onComplete, onEdit, onDelete }) {
+  const score = getDangerScore(d)
+  const dc = dangerColor(score)
+  const tl = getTimeLeft(d.date)
+  const type = TYPE_CONFIG[d.type] || TYPE_CONFIG.other
+
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, x: -20 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: 20, height: 0, marginBottom: 0 }}
+      transition={{ duration: 0.35, delay: idx * 0.04, ease }}
+      whileHover={{ x: 4 }}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 12,
+        padding: '13px 16px',
+        background: 'rgba(255,255,255,0.025)',
+        border: '1px solid rgba(255,255,255,0.05)',
+        borderLeft: `3px solid ${d.completed ? 'rgba(255,255,255,0.06)' : dc}`,
+        borderRadius: 12,
+        opacity: d.completed ? 0.45 : 1,
+        cursor: 'pointer',
+        transition: 'border-color 0.3s',
+        position: 'relative',
+        overflow: 'hidden',
+      }}>
+      {/* Glow for urgent */}
+      {score >= 8 && !d.completed && (
+        <div style={{ position: 'absolute', inset: 0, background: 'rgba(239,68,68,0.03)', pointerEvents: 'none', borderRadius: 12 }} />
+      )}
+
+      {/* Checkbox */}
+      <motion.button
+        whileHover={{ scale: 1.15 }}
+        whileTap={{ scale: 0.85 }}
+        onClick={() => onComplete(d.originalIndex)}
+        style={{
+          width: 22, height: 22, borderRadius: 7, flexShrink: 0,
+          border: `2px solid ${d.completed ? '#34d399' : 'rgba(255,255,255,0.15)'}`,
+          background: d.completed ? 'rgba(52,211,153,0.12)' : 'transparent',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          transition: 'all 0.2s',
+        }}>
+        {d.completed && (
+          <motion.svg initial={{ scale: 0 }} animate={{ scale: 1 }} width="11" height="11" fill="none" viewBox="0 0 24 24" stroke="#34d399" strokeWidth={3}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          </motion.svg>
+        )}
+      </motion.button>
+
+      {/* Type chip */}
+      <div style={{
+        fontSize: 8, fontWeight: 900, letterSpacing: '0.15em', textTransform: 'uppercase',
+        color: type.color, background: type.color + '18', padding: '3px 7px',
+        borderRadius: 5, flexShrink: 0,
+      }}>{type.label}</div>
+
+      {/* Title + course */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: 'rgba(255,255,255,0.85)', textDecoration: d.completed ? 'line-through' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {d.title}
+        </div>
+        {d.course && <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.28)', marginTop: 2, fontWeight: 600 }}>{d.course}</div>}
+      </div>
+
+      {/* Time left */}
+      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 900, color: tl.color, letterSpacing: '-0.02em' }}>{tl.text}</div>
+        <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.25)', fontWeight: 600, marginTop: 1 }}>{tl.sub}</div>
+      </div>
+
+      {/* Edit / Delete */}
+      <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
+        <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}
+          onClick={() => onEdit(d.originalIndex)}
+          style={{ width: 28, height: 28, borderRadius: 7, background: 'none', border: 'none', color: 'rgba(255,255,255,0.2)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'color 0.15s' }}>
+          <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+        </motion.button>
+        <motion.button whileHover={{ scale: 1.1, color: '#f87171' }} whileTap={{ scale: 0.9 }}
+          onClick={() => onDelete(d.originalIndex)}
+          style={{ width: 28, height: 28, borderRadius: 7, background: 'none', border: 'none', color: 'rgba(255,255,255,0.15)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'color 0.15s' }}>
+          <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+        </motion.button>
+      </div>
+    </motion.div>
+  )
+}
+
+// ─── Main ─────────────────────────────────────────────────────────────────────
 export default function Deadlines() {
   const { courses } = useCourses()
   const { deadlines, setDeadlines } = useDeadlines()
@@ -594,34 +296,10 @@ export default function Deadlines() {
   const [filter, setFilter] = useState('active')
   const [search, setSearch] = useState('')
   const [deleteConfirm, setDeleteConfirm] = useState(null)
-  const [viewMode, setViewMode] = useState('list') // 'list' | 'timeline'
-  const [notifPermission, setNotifPermission] = useState(() => {
-    if (typeof Notification === 'undefined') return 'unsupported'
-    return Notification.permission
-  })
-  const [notifBannerDismissed, setNotifBannerDismissed] = useState(() =>
-    localStorage.getItem('clutch-notif-dismissed') === '1')
-  const [selectedIds, setSelectedIds] = useState(new Set())
 
-  // Schedule notifications on load
-  useEffect(() => {
-    if (notifPermission === 'granted') scheduleNotifications(deadlines)
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const requestNotifications = async () => {
-    if (typeof Notification === 'undefined') return
-    const result = await Notification.requestPermission()
-    setNotifPermission(result)
-    if (result === 'granted') {
-      localStorage.setItem('clutch-notif-granted', '1')
-      scheduleNotifications(deadlines)
-    }
-  }
-
-  const dismissNotifBanner = () => {
-    setNotifBannerDismissed(true)
-    localStorage.setItem('clutch-notif-dismissed', '1')
-  }
+  const { scrollY } = useScroll()
+  const heroOpacity = useTransform(scrollY, [0, 180], [1, 0.6])
+  const heroY = useTransform(scrollY, [0, 180], [0, -24])
 
   // Stats
   const activeCount = deadlines.filter(d => !d.completed).length
@@ -641,15 +319,24 @@ export default function Deadlines() {
     else if (filter === 'urgent') filtered = filtered.filter(d => !d.completed && getDangerScore(d) >= 7)
     if (search.trim()) {
       const q = search.toLowerCase()
-      filtered = filtered.filter(d => d.title.toLowerCase().includes(q) || d.course.toLowerCase().includes(q))
+      filtered = filtered.filter(d => d.title.toLowerCase().includes(q) || (d.course || '').toLowerCase().includes(q))
     }
     return filtered
-      .map((d, i) => ({ ...d, originalIndex: deadlines.indexOf(d), dangerScore: getDangerScore(d) }))
+      .map(d => ({ ...d, originalIndex: deadlines.indexOf(d), dangerScore: getDangerScore(d) }))
       .sort((a, b) => b.dangerScore - a.dangerScore)
   }, [deadlines, filter, search])
 
-  const openAdd = () => { setForm({ ...EMPTY_DEADLINE }); setEditIndex(null); setShowForm(true) }
-  const openEdit = (i) => { setForm({ ...deadlines[i] }); setEditIndex(i); setShowForm(true) }
+  const openAdd = useCallback(() => { setForm({ ...EMPTY_DEADLINE }); setEditIndex(null); setShowForm(true) }, [])
+  const openEdit = useCallback((i) => { setForm({ ...deadlines[i] }); setEditIndex(i); setShowForm(true) }, [deadlines])
+  const openAddForDate = useCallback((dateStr) => {
+    setForm({ ...EMPTY_DEADLINE, date: dateStr + 'T23:59' })
+    setEditIndex(null); setShowForm(true)
+  }, [])
+  const openEditById = useCallback((dl) => {
+    const i = deadlines.findIndex(d => d.id === dl.id)
+    if (i !== -1) openEdit(i)
+  }, [deadlines, openEdit])
+
   const handleSave = () => {
     if (!form.title || !form.date) return
     if (editIndex !== null) {
@@ -662,260 +349,168 @@ export default function Deadlines() {
   const handleDelete = (i) => { setDeadlines(prev => prev.filter((_, idx) => idx !== i)); setDeleteConfirm(null) }
   const toggleComplete = (i) => setDeadlines(prev => prev.map((d, idx) => idx === i ? { ...d, completed: !d.completed } : d))
 
-  const toggleSelect = (i) => setSelectedIds(prev => {
-    const next = new Set(prev)
-    if (next.has(i)) next.delete(i); else next.add(i)
-    return next
-  })
-
-  const batchComplete = () => {
-    setDeadlines(prev => prev.map((d, i) => selectedIds.has(i) ? { ...d, completed: true } : d))
-    setSelectedIds(new Set())
-  }
-  const batchDelete = () => {
-    setDeadlines(prev => prev.filter((_, i) => !selectedIds.has(i)))
-    setSelectedIds(new Set())
-  }
-
-  const openAddForDate = useCallback((dateStr) => {
-    setForm({ ...EMPTY_DEADLINE, date: dateStr + 'T23:59' })
-    setEditIndex(null)
-    setShowForm(true)
-  }, [])
-
-  const openEditById = useCallback((dl) => {
-    const i = deadlines.findIndex(d => d.id === dl.id)
-    if (i !== -1) openEdit(i)
-  }, [deadlines])
-
-  const showNotifBanner = !notifBannerDismissed && notifPermission !== 'granted' && notifPermission !== 'unsupported'
-
   return (
-    <div style={S.page}>
-      {/* ── SCENE HEADER ── */}
-      <div style={{ padding: '8px 20px 0' }}>
-        <div style={S.sceneLabel}>SCENE 00 — DEADLINES</div>
-        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
-          <h1 style={S.heading}>Deadlines</h1>
-          <div style={{ display: 'flex', gap: 12, paddingBottom: 4 }}>
-            {[
-              { label: `${activeCount} active`, color: '#3b82f6' },
-              { label: `${urgentCount} urgent`, color: '#ef4444' },
-              { label: `${completedCount} done`, color: '#22c55e' },
-            ].map(({ label, color }) => (
-              <div key={label} style={{ fontSize: 10, fontWeight: 900, color, letterSpacing: '0.05em' }}>
-                {label}
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
+    <div style={{ background: '#080a0e', minHeight: '100vh', paddingBottom: 120, position: 'relative', fontFamily: 'inherit' }}>
+      <style>{`
+        @keyframes dl-pulse { 0%,100% { opacity: 0.5; transform: scale(1) } 50% { opacity: 1; transform: scale(1.15) } }
+        .dl-row-btn:hover { color: rgba(255,255,255,0.7) !important; }
+      `}</style>
 
-      <div style={{ padding: '16px 20px 0', display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {/* ── AMBIENT GLOW ── */}
+      <div style={{ position: 'fixed', top: 0, left: '30%', width: 600, height: 400, background: 'radial-gradient(ellipse, rgba(59,130,246,0.06) 0%, transparent 65%)', pointerEvents: 'none', zIndex: 0 }} />
+      <div style={{ position: 'fixed', top: '40%', right: '10%', width: 400, height: 400, background: 'radial-gradient(ellipse, rgba(139,92,246,0.04) 0%, transparent 65%)', pointerEvents: 'none', zIndex: 0 }} />
 
-        {/* ── NOTIFICATION BANNER ── */}
-        <AnimatePresence>
-          {showNotifBanner && (
+      <div style={{ position: 'relative', zIndex: 1, maxWidth: 820, margin: '0 auto', padding: '0 20px' }}>
+
+        {/* ── HERO ── */}
+        <motion.div style={{ opacity: heroOpacity, y: heroY }} initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, ease }}>
+          <div style={{ padding: '48px 0 40px' }}>
             <motion.div
-              initial={{ opacity: 0, y: -10 }}
+              initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, height: 0, marginBottom: 0 }}
-              transition={{ duration: 0.3 }}
-              style={{
-                background: '#0f1825',
-                border: '1px solid #1e3a5f',
-                borderRadius: 14,
-                padding: '12px 14px',
-                display: 'flex', alignItems: 'center', gap: 12,
-              }}>
-              <div style={{
-                width: 32, height: 32, borderRadius: 8, background: '#1e3a5f',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-              }}>
-                <svg width={16} height={16} fill="none" viewBox="0 0 24 24" stroke="#3b82f6" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-                </svg>
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 11, fontWeight: 900, color: '#f1f5f9', marginBottom: 2 }}>
-                  Get deadline reminders
-                </div>
-                <div style={{ fontSize: 11, color: '#475569', fontWeight: 600 }}>
-                  We'll notify you 2h before anything due within 48h.
-                </div>
-              </div>
-              <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                <button onClick={requestNotifications} style={{
-                  background: 'linear-gradient(135deg, #3b82f6, #06b6d4)',
-                  border: 'none', borderRadius: 8, color: '#fff',
-                  fontSize: 11, fontWeight: 900, padding: '6px 12px', cursor: 'pointer',
-                }}>
-                  Enable
-                </button>
-                <button onClick={dismissNotifBanner} style={{
-                  background: '#131922', border: 'none', borderRadius: 8, color: '#475569',
-                  fontSize: 11, fontWeight: 700, padding: '6px 10px', cursor: 'pointer',
-                }}>
-                  Dismiss
-                </button>
-              </div>
+              transition={{ delay: 0.1, duration: 0.5 }}
+              style={{ fontSize: 9, fontWeight: 900, letterSpacing: '0.32em', textTransform: 'uppercase', color: '#3b82f6', marginBottom: 14 }}>
+              SCENE 00 — TO-DO
             </motion.div>
-          )}
-        </AnimatePresence>
 
-        {/* Notification granted confirmation */}
-        {notifPermission === 'granted' && (
-          <div style={{
-            background: '#0f1f14', border: '1px solid #22c55e30', borderRadius: 10,
-            padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 8,
+            <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+              <motion.h1
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.15, duration: 0.6, ease }}
+                style={{ fontSize: 'clamp(42px,8vw,80px)', fontWeight: 900, letterSpacing: '-0.055em', lineHeight: 0.9, color: 'white', margin: 0 }}>
+                Your<br /><span style={{ color: 'rgba(255,255,255,0.2)' }}>TO-DO.</span>
+              </motion.h1>
+
+              {/* Stat pills */}
+              <motion.div
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.3, duration: 0.5, ease }}
+                style={{ display: 'flex', gap: 8 }}>
+                {[
+                  { n: activeCount, label: 'active', color: '#3b82f6' },
+                  { n: urgentCount, label: 'urgent', color: '#ef4444' },
+                  { n: completedCount, label: 'done', color: '#34d399' },
+                ].map(({ n, label, color }) => (
+                  <div key={label} style={{ padding: '10px 16px', background: `${color}0d`, border: `1px solid ${color}22`, borderRadius: 12, textAlign: 'center' }}>
+                    <div style={{ fontSize: 20, fontWeight: 900, color, letterSpacing: '-0.04em', lineHeight: 1 }}>{n}</div>
+                    <div style={{ fontSize: 8, fontWeight: 800, letterSpacing: '0.15em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)', marginTop: 3 }}>{label}</div>
+                  </div>
+                ))}
+              </motion.div>
+            </div>
+          </div>
+        </motion.div>
+
+        {/* ── CALENDAR SECTION ── */}
+        <motion.div
+          initial={{ opacity: 0, y: 40 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.25, duration: 0.65, ease }}
+          style={{
+            background: 'rgba(255,255,255,0.025)',
+            border: '1px solid rgba(255,255,255,0.07)',
+            borderRadius: 20,
+            padding: '28px 24px',
+            marginBottom: 40,
+            backdropFilter: 'blur(12px)',
+            WebkitBackdropFilter: 'blur(12px)',
+            boxShadow: '0 0 80px rgba(59,130,246,0.05), 0 24px 60px rgba(0,0,0,0.4)',
           }}>
-            <svg width={12} height={12} fill="none" viewBox="0 0 24 24" stroke="#22c55e" strokeWidth={2.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-            </svg>
-            <span style={{ fontSize: 11, fontWeight: 700, color: '#22c55e' }}>
-              Push notifications active — you'll be alerted 2h before urgent deadlines
-            </span>
-          </div>
-        )}
+          <CalendarView deadlines={deadlines} onEdit={openEditById} onAddForDate={openAddForDate} />
+        </motion.div>
 
-        {/* ── BATCH ACTIONS ── */}
-        <AnimatePresence>
-          {selectedIds.size > 0 && (
-            <motion.div
-              initial={{ opacity: 0, y: -8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              style={{
-                background: '#0f1825', border: '1px solid #1e3a5f', borderRadius: 12,
-                padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10,
-              }}>
-              <span style={{ fontSize: 11, fontWeight: 900, color: '#3b82f6', flex: 1 }}>
-                {selectedIds.size} selected
-              </span>
-              <button onClick={batchComplete} style={{
-                background: '#0f1f14', border: '1px solid #22c55e30', borderRadius: 8,
-                color: '#22c55e', fontSize: 11, fontWeight: 900, padding: '6px 12px', cursor: 'pointer',
-              }}>
-                Complete all
-              </button>
-              <button onClick={batchDelete} style={{
-                background: '#1f0f0f', border: '1px solid #ef444430', borderRadius: 8,
-                color: '#ef4444', fontSize: 11, fontWeight: 900, padding: '6px 12px', cursor: 'pointer',
-              }}>
-                Delete all
-              </button>
-              <button onClick={() => setSelectedIds(new Set())} style={{
-                background: '#131922', border: 'none', borderRadius: 8,
-                color: '#475569', fontSize: 11, fontWeight: 700, padding: '6px 10px', cursor: 'pointer',
-              }}>
-                Clear
-              </button>
+        {/* ── URGENCY QUEUE ── */}
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4, duration: 0.6, ease }}
+          whileInView={{ opacity: 1 }}
+          style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+          {/* Section header */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <div style={{ fontSize: 9, fontWeight: 900, letterSpacing: '0.28em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.2)', whiteSpace: 'nowrap' }}>
+              URGENCY QUEUE
+            </div>
+            <div style={{ flex: 1, height: 1, background: 'linear-gradient(to right, rgba(255,255,255,0.06), transparent)' }} />
+          </div>
+
+          {/* Filters + search row */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 10, padding: 3, gap: 2 }}>
+              {[['active', `Active`], ['urgent', `Urgent`], ['completed', 'Done'], ['all', 'All']].map(([f, label]) => (
+                <motion.button key={f} whileTap={{ scale: 0.95 }} onClick={() => setFilter(f)} style={{
+                  padding: '6px 12px', borderRadius: 7, border: 'none', cursor: 'pointer',
+                  fontSize: 10, fontWeight: 900, letterSpacing: '0.05em', transition: 'all 0.15s',
+                  background: filter === f ? 'linear-gradient(135deg, #3b82f6, #06b6d4)' : 'transparent',
+                  color: filter === f ? '#fff' : 'rgba(255,255,255,0.3)',
+                  boxShadow: filter === f ? '0 0 14px rgba(59,130,246,0.35)' : 'none',
+                }}>{label}{f === 'active' ? ` (${activeCount})` : f === 'urgent' ? ` (${urgentCount})` : ''}</motion.button>
+              ))}
+            </div>
+
+            {/* Search */}
+            <div style={{ position: 'relative', flex: 1, minWidth: 140 }}>
+              <svg style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)' }} width={12} height={12} fill="none" viewBox="0 0 24 24" stroke="rgba(255,255,255,0.2)" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search…"
+                style={{ width: '100%', boxSizing: 'border-box', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 10, color: 'white', padding: '8px 12px 8px 30px', fontSize: 12, outline: 'none' }} />
+            </div>
+          </div>
+
+          {/* List */}
+          {sortedDeadlines.length === 0 ? (
+            <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }}
+              style={{ textAlign: 'center', padding: '56px 24px', background: 'rgba(255,255,255,0.015)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 16 }}>
+              <motion.div animate={{ y: [0, -6, 0] }} transition={{ duration: 2.8, repeat: Infinity }}>
+                <svg width={40} height={40} fill="none" viewBox="0 0 24 24" stroke="rgba(255,255,255,0.1)" strokeWidth={1.5} style={{ margin: '0 auto 14px', display: 'block' }}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                </svg>
+              </motion.div>
+              <div style={{ fontSize: 14, fontWeight: 800, color: 'rgba(255,255,255,0.2)', marginBottom: 6 }}>
+                {search ? 'No results' : filter === 'completed' ? 'Nothing done yet' : 'Clear queue'}
+              </div>
+              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.12)', fontWeight: 600 }}>
+                {search ? 'Try a different term' : 'Tap + to add a deadline'}
+              </div>
+            </motion.div>
+          ) : (
+            <motion.div layout style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <AnimatePresence>
+                {sortedDeadlines.map((d, idx) => (
+                  <DeadlineRow
+                    key={`${d.originalIndex}-${d.id || d.title}`}
+                    d={d} idx={idx}
+                    onComplete={toggleComplete}
+                    onEdit={openEdit}
+                    onDelete={(i) => setDeleteConfirm(i)}
+                  />
+                ))}
+              </AnimatePresence>
             </motion.div>
           )}
-        </AnimatePresence>
-
-        {/* ── VIEW TOGGLE ── */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-          <div style={{ display: 'flex', background: '#0d1117', border: '1px solid #1e2530', borderRadius: 10, padding: 3, gap: 2 }}>
-            {[['list', 'To-Do'], ['calendar', 'Calendar']].map(([mode, label]) => (
-              <button key={mode} onClick={() => setViewMode(mode)} style={{
-                padding: '6px 14px', borderRadius: 8, border: 'none', cursor: 'pointer',
-                fontSize: 11, fontWeight: 900, transition: 'all 0.15s',
-                background: viewMode === mode ? 'linear-gradient(135deg, #3b82f6, #06b6d4)' : 'transparent',
-                color: viewMode === mode ? '#fff' : '#475569',
-                boxShadow: viewMode === mode ? '0 0 10px rgba(59,130,246,0.3)' : 'none',
-              }}>{label}</button>
-            ))}
-          </div>
-
-          {/* Search */}
-          <div style={{ position: 'relative', flex: 1, maxWidth: 200 }}>
-            <svg style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)' }}
-              width={13} height={13} fill="none" viewBox="0 0 24 24" stroke="#475569" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-            <input type="text" value={search} onChange={e => setSearch(e.target.value)}
-              style={{ ...S.input, paddingLeft: 30, paddingTop: 8, paddingBottom: 8, fontSize: 12 }}
-              placeholder="Search..." />
-          </div>
-        </div>
-
-        {/* ── FILTER TABS ── */}
-        <div style={{ display: 'flex', gap: 6 }}>
-          {[
-            ['active', `Active (${activeCount})`],
-            ['urgent', `Urgent (${urgentCount})`],
-            ['completed', 'Completed'],
-            ['all', 'All'],
-          ].map(([f, label]) => (
-            <button key={f} onClick={() => setFilter(f)} style={{
-              padding: '7px 12px', borderRadius: 10, cursor: 'pointer',
-              fontSize: 11, fontWeight: 900, transition: 'all 0.15s',
-              background: filter === f ? 'linear-gradient(135deg, #3b82f6, #06b6d4)' : '#0d1117',
-              color: filter === f ? '#fff' : '#475569',
-              boxShadow: filter === f ? '0 0 12px rgba(59,130,246,0.25)' : 'none',
-              border: filter !== f ? '1px solid #1e2530' : 'none',
-            }}>{label}</button>
-          ))}
-        </div>
-
-        {/* ── CONTENT ── */}
-        {sortedDeadlines.length === 0 ? (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }}
-            style={{ ...S.card, padding: '60px 20px', textAlign: 'center' }}>
-            <div style={{
-              width: 56, height: 56, borderRadius: 16, background: '#131922',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              margin: '0 auto 16px',
-            }}>
-              <svg width={28} height={28} fill="none" viewBox="0 0 24 24" stroke="#334155" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-              </svg>
-            </div>
-            <div style={{ fontSize: 14, fontWeight: 900, color: '#64748b' }}>
-              {search ? 'No results found' : filter === 'completed' ? 'Nothing completed yet' : 'No deadlines'}
-            </div>
-            <div style={{ fontSize: 12, color: '#334155', marginTop: 4, fontWeight: 600 }}>
-              {search ? 'Try a different search term' : 'Tap + to add your first deadline'}
-            </div>
-          </motion.div>
-        ) : viewMode === 'calendar' ? (
-          <CalendarView deadlines={deadlines} onEdit={openEditById} onAddForDate={openAddForDate} />
-        ) : (
-          <motion.div layout style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <AnimatePresence>
-              {sortedDeadlines.map((d, idx) => (
-                <DeadlineCard
-                  key={`${d.originalIndex}-${d.title}`}
-                  d={d}
-                  idx={idx}
-                  onComplete={toggleComplete}
-                  onEdit={openEdit}
-                  onDelete={(i) => setDeleteConfirm(i)}
-                  onSelect={toggleSelect}
-                  selected={selectedIds.has(d.originalIndex)}
-                />
-              ))}
-            </AnimatePresence>
-          </motion.div>
-        )}
+        </motion.div>
       </div>
 
       {/* ── FAB ── */}
       <motion.button
-        whileHover={{ scale: 1.08 }}
-        whileTap={{ scale: 0.94 }}
+        initial={{ scale: 0, rotate: -90 }}
+        animate={{ scale: 1, rotate: 0 }}
+        transition={{ delay: 0.5, type: 'spring', stiffness: 260, damping: 18 }}
+        whileHover={{ scale: 1.1, boxShadow: '0 0 36px rgba(59,130,246,0.7), 0 8px 24px rgba(0,0,0,0.5)' }}
+        whileTap={{ scale: 0.93 }}
         onClick={openAdd}
         style={{
           position: 'fixed', bottom: 90, right: 20,
-          width: 52, height: 52, borderRadius: '50%',
+          width: 54, height: 54, borderRadius: '50%',
           background: 'linear-gradient(135deg, #3b82f6, #06b6d4)',
           border: 'none', cursor: 'pointer',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           boxShadow: '0 0 24px rgba(59,130,246,0.5), 0 4px 16px rgba(0,0,0,0.4)',
-          zIndex: 40,
-          color: '#fff',
+          zIndex: 40, color: '#fff',
         }}>
         <svg width={22} height={22} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
@@ -927,151 +522,95 @@ export default function Deadlines() {
         {showForm && (
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            style={{
-              position: 'fixed', inset: 0, zIndex: 50,
-              display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-              padding: '0 0 0 0',
-              background: 'rgba(8,10,14,0.85)',
-              backdropFilter: 'blur(12px)',
-            }}>
+            style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', background: 'rgba(8,10,14,0.88)', backdropFilter: 'blur(16px)' }}
+            onClick={e => { if (e.target === e.currentTarget) { setShowForm(false); setEditIndex(null) } }}>
             <motion.div
-              initial={{ opacity: 0, y: 40 }}
+              initial={{ opacity: 0, y: 60 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 24 }}
-              transition={{ duration: 0.3, ease }}
+              exit={{ opacity: 0, y: 40 }}
+              transition={{ duration: 0.35, ease }}
               style={{
-                ...S.card,
-                width: '100%', maxWidth: 480,
-                maxHeight: '92vh',
+                width: '100%', maxWidth: 480, maxHeight: '92vh',
+                background: '#0d0f14',
+                border: '1px solid rgba(255,255,255,0.08)',
+                borderRadius: '22px 22px 0 0',
                 display: 'flex', flexDirection: 'column',
-                borderRadius: '20px 20px 0 0',
+                boxShadow: '0 -20px 60px rgba(0,0,0,0.5)',
               }}>
-              {/* Modal header */}
-              <div style={{
-                padding: '18px 20px 14px', borderBottom: '1px solid #1e2530',
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              }}>
+              {/* Handle */}
+              <div style={{ width: 36, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.1)', margin: '14px auto 0' }} />
+
+              {/* Header */}
+              <div style={{ padding: '16px 22px 14px', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div>
-                  <div style={S.sceneLabel}>{editIndex !== null ? 'EDIT DEADLINE' : 'NEW DEADLINE'}</div>
-                  <div style={{ fontSize: 16, fontWeight: 900, color: '#f1f5f9', letterSpacing: '-0.02em' }}>
+                  <div style={{ fontSize: 8, fontWeight: 900, letterSpacing: '0.28em', textTransform: 'uppercase', color: '#3b82f6', marginBottom: 4 }}>
+                    {editIndex !== null ? 'EDIT' : 'NEW'} DEADLINE
+                  </div>
+                  <div style={{ fontSize: 17, fontWeight: 900, color: 'white', letterSpacing: '-0.03em' }}>
                     {editIndex !== null ? 'Update deadline' : 'What\'s due?'}
                   </div>
                 </div>
-                <button onClick={() => { setShowForm(false); setEditIndex(null) }} style={{
-                  width: 32, height: 32, borderRadius: 10, background: '#131922', border: 'none',
-                  color: '#475569', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}>
-                  <svg width={14} height={14} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
+                <motion.button whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.92 }}
+                  onClick={() => { setShowForm(false); setEditIndex(null) }}
+                  style={{ width: 32, height: 32, borderRadius: 9, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  ✕
+                </motion.button>
               </div>
 
-              {/* Modal body */}
-              <div style={{ padding: '16px 20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 14 }}>
-                {/* Title */}
-                <div>
-                  <label style={{ display: 'block', fontSize: 9, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.15em', color: '#475569', marginBottom: 6 }}>
-                    What's due? *
-                  </label>
-                  <input type="text" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-                    style={S.input} placeholder="e.g., ECON 101 Midterm" />
+              {/* Body */}
+              <div style={{ padding: '18px 22px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <input type="text" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+                  autoFocus placeholder="Assignment title *"
+                  style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 11, color: 'white', padding: '13px 16px', fontSize: 14, fontWeight: 600, outline: 'none', width: '100%', boxSizing: 'border-box' }} />
+
+                {courses.length > 0 ? (
+                  <select value={form.courseId || ''} onChange={e => handleCourseSelect(e.target.value)}
+                    style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 11, color: 'white', padding: '13px 16px', fontSize: 14, outline: 'none', width: '100%', boxSizing: 'border-box', appearance: 'none' }}>
+                    <option value="" style={{ background: '#0d0f14' }}>No specific course</option>
+                    {courses.map(c => <option key={c.id} value={c.id} style={{ background: '#0d0f14' }}>{c.code} — {c.name}</option>)}
+                  </select>
+                ) : (
+                  <input type="text" value={form.course} onChange={e => setForm(f => ({ ...f, course: e.target.value }))}
+                    placeholder="Course (optional)"
+                    style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 11, color: 'white', padding: '13px 16px', fontSize: 14, outline: 'none', width: '100%', boxSizing: 'border-box' }} />
+                )}
+
+                <input type="datetime-local" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
+                  style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 11, color: 'white', padding: '13px 16px', fontSize: 14, outline: 'none', width: '100%', boxSizing: 'border-box', colorScheme: 'dark' }} />
+
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {Object.entries(TYPE_CONFIG).map(([key, { label, color }]) => (
+                    <motion.button key={key} whileTap={{ scale: 0.93 }} onClick={() => setForm(f => ({ ...f, type: key }))}
+                      style={{ padding: '7px 14px', borderRadius: 9, cursor: 'pointer', fontSize: 11, fontWeight: 800, transition: 'all 0.15s', background: form.type === key ? `${color}18` : 'rgba(255,255,255,0.03)', color: form.type === key ? color : 'rgba(255,255,255,0.3)', border: `1px solid ${form.type === key ? color + '40' : 'rgba(255,255,255,0.06)'}` }}>
+                      {label}
+                    </motion.button>
+                  ))}
                 </div>
 
-                {/* Course */}
-                <div>
-                  <label style={{ display: 'block', fontSize: 9, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.15em', color: '#475569', marginBottom: 6 }}>
-                    Course
-                  </label>
-                  {courses.length > 0 ? (
-                    <select value={form.courseId || ''} onChange={e => handleCourseSelect(e.target.value)} style={S.select}>
-                      <option value="">No specific course</option>
-                      {courses.map(c => (
-                        <option key={c.id} value={c.id}>{c.code} — {c.name}</option>
-                      ))}
-                    </select>
-                  ) : (
-                    <input type="text" value={form.course} onChange={e => setForm(f => ({ ...f, course: e.target.value }))}
-                      style={S.input} placeholder="e.g., ECON 101" />
-                  )}
-                </div>
-
-                {/* Date */}
-                <div>
-                  <label style={{ display: 'block', fontSize: 9, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.15em', color: '#475569', marginBottom: 6 }}>
-                    Due Date & Time *
-                  </label>
-                  <input type="datetime-local" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
-                    style={S.input} />
-                </div>
-
-                {/* Type */}
-                <div>
-                  <label style={{ display: 'block', fontSize: 9, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.15em', color: '#475569', marginBottom: 8 }}>
-                    Type
-                  </label>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                    {Object.entries(TYPE_CONFIG).map(([key, { label, color }]) => (
-                      <button key={key} onClick={() => setForm(f => ({ ...f, type: key }))} style={{
-                        padding: '6px 12px', borderRadius: 9, cursor: 'pointer',
-                        fontSize: 11, fontWeight: 900, transition: 'all 0.15s',
-                        background: form.type === key ? `${color}20` : '#131922',
-                        color: form.type === key ? color : '#475569',
-                        border: `1px solid ${form.type === key ? color + '40' : 'transparent'}`,
-                      }}>{label}</button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Weight */}
                 <div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                    <label style={{ fontSize: 9, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.15em', color: '#475569' }}>
-                      Grade Weight
-                    </label>
-                    <span style={{ fontSize: 11, fontWeight: 900, color: '#f1f5f9' }}>{form.weight}/10</span>
+                    <label style={{ fontSize: 9, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(255,255,255,0.3)' }}>Grade Weight</label>
+                    <span style={{ fontSize: 11, fontWeight: 900, color: 'white' }}>{form.weight}/10</span>
                   </div>
-                  <input type="range" min="1" max="10" step="1" value={form.weight}
-                    onChange={e => setForm(f => ({ ...f, weight: parseInt(e.target.value) }))}
-                    style={{ width: '100%', accentColor: '#3b82f6' }} />
+                  <input type="range" min="1" max="10" value={form.weight} onChange={e => setForm(f => ({ ...f, weight: +e.target.value }))} style={{ width: '100%', accentColor: '#3b82f6' }} />
                 </div>
-
-                {/* Difficulty */}
                 <div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                    <label style={{ fontSize: 9, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.15em', color: '#475569' }}>
-                      Difficulty
-                    </label>
-                    <span style={{ fontSize: 11, fontWeight: 900, color: '#f1f5f9' }}>{form.difficulty}/10</span>
+                    <label style={{ fontSize: 9, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(255,255,255,0.3)' }}>Difficulty</label>
+                    <span style={{ fontSize: 11, fontWeight: 900, color: 'white' }}>{form.difficulty}/10</span>
                   </div>
-                  <input type="range" min="1" max="10" step="1" value={form.difficulty}
-                    onChange={e => setForm(f => ({ ...f, difficulty: parseInt(e.target.value) }))}
-                    style={{ width: '100%', accentColor: '#3b82f6' }} />
+                  <input type="range" min="1" max="10" value={form.difficulty} onChange={e => setForm(f => ({ ...f, difficulty: +e.target.value }))} style={{ width: '100%', accentColor: '#8b5cf6' }} />
                 </div>
               </div>
 
-              {/* Modal footer */}
-              <div style={{ padding: '14px 20px 20px', borderTop: '1px solid #1e2530', display: 'flex', gap: 10 }}>
-                <button onClick={() => { setShowForm(false); setEditIndex(null) }} style={{
-                  flex: 1, padding: '13px', borderRadius: 12, border: '1px solid #1e2530',
-                  background: '#131922', color: '#64748b', fontSize: 13, fontWeight: 700, cursor: 'pointer',
-                }}>
+              {/* Footer */}
+              <div style={{ padding: '14px 22px 22px', borderTop: '1px solid rgba(255,255,255,0.06)', display: 'flex', gap: 10 }}>
+                <motion.button whileTap={{ scale: 0.97 }} onClick={() => { setShowForm(false); setEditIndex(null) }}
+                  style={{ flex: 1, padding: '14px', borderRadius: 13, border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.35)', fontSize: 13, fontWeight: 800, cursor: 'pointer' }}>
                   Cancel
-                </button>
-                <motion.button
-                  whileTap={{ scale: 0.98 }}
-                  onClick={handleSave}
-                  disabled={!form.title || !form.date}
-                  style={{
-                    flex: 1, padding: '13px', borderRadius: 12, border: 'none',
-                    background: (!form.title || !form.date)
-                      ? '#131922'
-                      : 'linear-gradient(135deg, #3b82f6, #06b6d4)',
-                    color: (!form.title || !form.date) ? '#334155' : '#fff',
-                    fontSize: 13, fontWeight: 900, cursor: (!form.title || !form.date) ? 'not-allowed' : 'pointer',
-                    transition: 'all 0.2s',
-                    boxShadow: (!form.title || !form.date) ? 'none' : '0 0 16px rgba(59,130,246,0.35)',
-                  }}>
+                </motion.button>
+                <motion.button whileTap={{ scale: 0.97 }} onClick={handleSave} disabled={!form.title || !form.date}
+                  style={{ flex: 1, padding: '14px', borderRadius: 13, border: 'none', background: !form.title || !form.date ? 'rgba(255,255,255,0.05)' : 'linear-gradient(135deg, #3b82f6, #06b6d4)', color: !form.title || !form.date ? 'rgba(255,255,255,0.2)' : 'white', fontSize: 13, fontWeight: 900, cursor: !form.title || !form.date ? 'not-allowed' : 'pointer', boxShadow: !form.title || !form.date ? 'none' : '0 0 20px rgba(59,130,246,0.4)', transition: 'all 0.2s' }}>
                   {editIndex !== null ? 'Save Changes' : 'Add Deadline'}
                 </motion.button>
               </div>
@@ -1083,41 +622,30 @@ export default function Deadlines() {
       {/* ── DELETE CONFIRM ── */}
       <AnimatePresence>
         {deleteConfirm !== null && (
-          <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            style={{
-              position: 'fixed', inset: 0, zIndex: 50,
-              display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
-              background: 'rgba(8,10,14,0.85)', backdropFilter: 'blur(12px)',
-            }}>
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, background: 'rgba(8,10,14,0.88)', backdropFilter: 'blur(16px)' }}>
             <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.9 }}
-              transition={{ duration: 0.2, ease }}
-              style={{ ...S.card, width: '100%', maxWidth: 320, padding: '24px 20px', textAlign: 'center' }}>
-              <div style={{
-                width: 48, height: 48, borderRadius: 14, background: 'rgba(239,68,68,0.12)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px',
-              }}>
-                <svg width={22} height={22} fill="none" viewBox="0 0 24 24" stroke="#ef4444" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
+              initial={{ opacity: 0, scale: 0.88, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.88 }}
+              transition={{ duration: 0.25, ease }}
+              style={{ background: '#0d0f14', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 18, width: '100%', maxWidth: 320, padding: '28px 22px', textAlign: 'center' }}>
+              <div style={{ width: 48, height: 48, borderRadius: 14, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+                <svg width={22} height={22} fill="none" viewBox="0 0 24 24" stroke="#ef4444" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
               </div>
-              <div style={{ fontSize: 15, fontWeight: 900, color: '#f1f5f9', marginBottom: 6 }}>Delete deadline?</div>
-              <div style={{ fontSize: 12, color: '#475569', marginBottom: 20, fontWeight: 600 }}>
+              <div style={{ fontSize: 16, fontWeight: 900, color: 'white', marginBottom: 8, letterSpacing: '-0.02em' }}>Remove deadline?</div>
+              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.3)', marginBottom: 22, fontWeight: 600, lineHeight: 1.5 }}>
                 "{deadlines[deleteConfirm]?.title}" will be permanently removed.
               </div>
               <div style={{ display: 'flex', gap: 10 }}>
-                <button onClick={() => setDeleteConfirm(null)} style={{
-                  flex: 1, padding: '11px', borderRadius: 10, border: '1px solid #1e2530',
-                  background: '#131922', color: '#64748b', fontSize: 13, fontWeight: 700, cursor: 'pointer',
-                }}>Cancel</button>
-                <motion.button whileTap={{ scale: 0.96 }} onClick={() => handleDelete(deleteConfirm)} style={{
-                  flex: 1, padding: '11px', borderRadius: 10, border: '1px solid rgba(239,68,68,0.2)',
-                  background: 'rgba(239,68,68,0.12)', color: '#ef4444',
-                  fontSize: 13, fontWeight: 900, cursor: 'pointer',
-                }}>Delete</motion.button>
+                <motion.button whileTap={{ scale: 0.97 }} onClick={() => setDeleteConfirm(null)}
+                  style={{ flex: 1, padding: '12px', borderRadius: 11, border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.35)', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                  Cancel
+                </motion.button>
+                <motion.button whileTap={{ scale: 0.97 }} onClick={() => handleDelete(deleteConfirm)}
+                  style={{ flex: 1, padding: '12px', borderRadius: 11, border: '1px solid rgba(239,68,68,0.2)', background: 'rgba(239,68,68,0.1)', color: '#f87171', fontSize: 13, fontWeight: 900, cursor: 'pointer' }}>
+                  Remove
+                </motion.button>
               </div>
             </motion.div>
           </motion.div>
