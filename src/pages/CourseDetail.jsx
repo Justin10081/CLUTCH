@@ -195,6 +195,7 @@ export default function CourseDetail() {
   const [dlForm, setDlForm] = useState({ title: '', date: '', type: 'homework', weight: 5, difficulty: 5 })
   const [dlShowAdd, setDlShowAdd] = useState(false)
   const [dlDeleteId, setDlDeleteId] = useState(null)
+  const [syllabusDragOver, setSyllabusDragOver] = useState(false)
 
   const fileInputRef = useRef()
   const syllabusRef = useRef()
@@ -266,10 +267,8 @@ export default function CourseDetail() {
   }
 
   // ── Syllabus parse
-  const handleSyllabusUpload = async (e) => {
-    const file = e.target.files?.[0]
+  const handleSyllabusFile = async (file) => {
     if (!file) return
-    e.target.value = ''
 
     setParseStep(0)
     setParseMsg('')
@@ -315,6 +314,13 @@ export default function CourseDetail() {
       setParseStep(5)
       setParseMsg(err.message || 'Failed to parse syllabus')
     }
+  }
+
+  const handleSyllabusUpload = (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    handleSyllabusFile(file)
   }
 
   const heroGradient = `linear-gradient(135deg, ${course.color}28 0%, ${course.color}0a 50%, transparent 80%)`
@@ -502,12 +508,26 @@ export default function CourseDetail() {
                     </motion.div>
                   )}
                   {!syllabusData && (parseStep < 0 || parseStep === 4) && (
-                    <motion.button key="upload-zone" onClick={() => syllabusRef.current?.click()}
+                    <motion.button key="upload-zone"
+                      onClick={() => syllabusRef.current?.click()}
+                      onDragOver={e => { e.preventDefault(); setSyllabusDragOver(true) }}
+                      onDragLeave={() => setSyllabusDragOver(false)}
+                      onDrop={e => { e.preventDefault(); setSyllabusDragOver(false); const f = e.dataTransfer.files?.[0]; if (f) handleSyllabusFile(f) }}
                       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                      whileHover={{ borderColor: `${course.color}44`, background: `${course.color}05` }}
-                      style={{ width: '100%', padding: '36px 20px', background: 'rgba(255,255,255,0.015)', border: '1px dashed rgba(255,255,255,0.1)', borderRadius: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, transition: 'background 0.2s, border-color 0.2s' }}>
-                      <motion.span style={{ fontSize: 32 }} animate={{ y: [0, -4, 0] }} transition={{ duration: 2, repeat: Infinity }}>📋</motion.span>
-                      <span style={{ fontSize: 13, fontWeight: 700, color: 'rgba(255,255,255,0.35)' }}>Drop your syllabus (.pdf, .txt, .md)</span>
+                      style={{
+                        width: '100%', padding: '36px 20px',
+                        background: syllabusDragOver ? `${course.color}12` : 'rgba(255,255,255,0.015)',
+                        border: `1px dashed ${syllabusDragOver ? course.color : 'rgba(255,255,255,0.1)'}`,
+                        borderRadius: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10,
+                        transition: 'background 0.2s, border-color 0.2s',
+                        transform: syllabusDragOver ? 'scale(1.01)' : 'scale(1)',
+                      }}>
+                      <motion.span style={{ fontSize: 32 }} animate={{ y: syllabusDragOver ? -6 : [0, -4, 0] }} transition={{ duration: syllabusDragOver ? 0.2 : 2, repeat: syllabusDragOver ? 0 : Infinity }}>
+                        {syllabusDragOver ? '⬇️' : '📋'}
+                      </motion.span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: syllabusDragOver ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.35)' }}>
+                        {syllabusDragOver ? 'Drop to upload' : 'Drop your syllabus (.pdf, .txt, .md)'}
+                      </span>
                       <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.18)' }}>AI organizes everything for you instantly</span>
                     </motion.button>
                   )}

@@ -97,6 +97,7 @@ export default function Courses() {
   const [parseStep, setParseStep] = useState(-1) // -1=idle, 0-3=steps, 4=done, 5=error
   const [parseMsg, setParseMsg] = useState('')
   const [hoveredCard, setHoveredCard] = useState(null)
+  const [syllabusDragOver, setSyllabusDragOver] = useState(false)
   const syllabusRef = useRef()
 
   const openAdd = () => {
@@ -715,22 +716,23 @@ export default function Courses() {
                     <motion.button
                       whileTap={{ scale: 0.98 }}
                       onClick={() => syllabusRef.current?.click()}
+                      onDragOver={e => { e.preventDefault(); setSyllabusDragOver(true) }}
+                      onDragLeave={() => setSyllabusDragOver(false)}
+                      onDrop={e => { e.preventDefault(); setSyllabusDragOver(false); const f = e.dataTransfer.files?.[0]; if (f) setSyllabusFile(f) }}
                       style={{
                         width: '100%', padding: '20px',
-                        border: '1px dashed rgba(255,255,255,0.1)',
-                        borderRadius: 8, background: 'rgba(255,255,255,0.02)',
+                        border: `1px dashed ${syllabusDragOver ? 'rgba(59,130,246,0.6)' : 'rgba(255,255,255,0.1)'}`,
+                        borderRadius: 8,
+                        background: syllabusDragOver ? 'rgba(59,130,246,0.08)' : 'rgba(255,255,255,0.02)',
                         display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
                         cursor: 'none', transition: 'border-color 0.2s, background 0.2s',
-                      }}
-                      whileHover={{
-                        borderColor: 'rgba(59,130,246,0.4)',
-                        backgroundColor: 'rgba(59,130,246,0.04)',
+                        transform: syllabusDragOver ? 'scale(1.01)' : 'scale(1)',
                       }}>
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.25)" strokeWidth="1.5">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={syllabusDragOver ? 'rgba(59,130,246,0.7)' : 'rgba(255,255,255,0.25)'} strokeWidth="1.5" style={{ transition: 'stroke 0.2s' }}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
                       </svg>
-                      <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.22)' }}>
-                        Upload Syllabus
+                      <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', color: syllabusDragOver ? 'rgba(59,130,246,0.9)' : 'rgba(255,255,255,0.22)', transition: 'color 0.2s' }}>
+                        {syllabusDragOver ? 'Drop to attach' : 'Drag & drop or click to upload'}
                       </span>
                     </motion.button>
                   )}

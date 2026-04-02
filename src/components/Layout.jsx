@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom'
-import { motion, useMotionValue, useSpring, AnimatePresence } from 'motion/react'
+import { motion, AnimatePresence } from 'motion/react'
 import { useAuth } from '../context/AuthContext'
 import StudyTimer from './StudyTimer'
 
@@ -12,14 +12,67 @@ const PAGE_MAP = {
   '/social': 'Ranked',
   '/dashboard': 'Overview',
   '/settings': 'Settings',
+  '/admin': 'Admin',
 }
 
 const NAV_ITEMS = [
+  { to: '/dashboard', label: 'Dashboard', sub: 'Your home base' },
   { to: '/courses', label: 'Courses', sub: 'Your semester hub' },
   { to: '/clutch', label: 'Clutch Mode', sub: 'AI study engine' },
   { to: '/gpa', label: 'GPA Simulator', sub: 'What do you need?' },
   { to: '/deadlines', label: 'TO-DO', sub: 'Stay on track' },
   { to: '/social', label: 'Ranked', sub: 'Leaderboard & friends' },
+]
+
+const BOTTOM_TABS = [
+  {
+    to: '/dashboard',
+    label: 'Home',
+    icon: (active) => (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={active ? 0 : 1.8} strokeLinecap="round" strokeLinejoin="round">
+        <path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H5a1 1 0 01-1-1V9.5z" />
+        <path d="M9 21V12h6v9" strokeWidth="1.8" fill="none" />
+      </svg>
+    ),
+  },
+  {
+    to: '/courses',
+    label: 'Courses',
+    icon: (active) => (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={active ? 0 : 1.8} strokeLinecap="round" strokeLinejoin="round">
+        <path d="M4 19.5A2.5 2.5 0 016.5 17H20" />
+        <path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z" />
+      </svg>
+    ),
+  },
+  {
+    to: '/clutch',
+    label: 'Clutch',
+    icon: (active) => (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={active ? 0 : 1.8} strokeLinecap="round" strokeLinejoin="round">
+        <path d="M13 2L4.09 12.26c-.21.27-.32.59-.31.92.01.32.14.63.36.86L13 22l8.86-8.96c.22-.23.35-.54.36-.86a1.4 1.4 0 00-.31-.92L13 2z" />
+      </svg>
+    ),
+  },
+  {
+    to: '/deadlines',
+    label: 'TO-DO',
+    icon: (active) => (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={active ? 0 : 1.8} strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+        <path d="M16 2v4M8 2v4M3 10h18" />
+      </svg>
+    ),
+  },
+  {
+    to: '/gpa',
+    label: 'GPA',
+    icon: (active) => (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={active ? 0 : 1.8} strokeLinecap="round" strokeLinejoin="round">
+        <path d="M18 20V10M12 20V4M6 20v-6" />
+      </svg>
+    ),
+  },
 ]
 
 // Zero-lag crosshair — pure DOM, no React/spring overhead
@@ -98,6 +151,61 @@ function Particles() {
   )
 }
 
+// ── Bottom Navigation Bar ──────────────────────────────────────────────────────
+function BottomNav({ pathname }) {
+  return (
+    <nav style={{
+      position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 200,
+      background: 'rgba(8,10,14,0.92)',
+      backdropFilter: 'blur(24px)',
+      WebkitBackdropFilter: 'blur(24px)',
+      borderTop: '1px solid rgba(255,255,255,0.07)',
+      display: 'flex', alignItems: 'stretch',
+      paddingBottom: 'env(safe-area-inset-bottom)',
+    }}>
+      {BOTTOM_TABS.map(tab => {
+        const active = pathname === tab.to || (tab.to !== '/dashboard' && pathname.startsWith(tab.to))
+        return (
+          <Link
+            key={tab.to}
+            to={tab.to}
+            style={{
+              flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
+              justifyContent: 'center', gap: 4, padding: '10px 4px 10px',
+              textDecoration: 'none', position: 'relative',
+              color: active ? '#3b82f6' : 'rgba(255,255,255,0.32)',
+              transition: 'color 0.2s',
+            }}>
+            {active && (
+              <motion.div
+                layoutId="bottomNavIndicator"
+                style={{
+                  position: 'absolute', top: 0, left: '20%', right: '20%', height: 2,
+                  background: 'linear-gradient(90deg, #3b82f6, #06b6d4)',
+                  borderRadius: '0 0 4px 4px',
+                }}
+                transition={{ type: 'spring', stiffness: 500, damping: 40 }}
+              />
+            )}
+            <motion.div
+              animate={{ scale: active ? 1.1 : 1, y: active ? -1 : 0 }}
+              transition={{ type: 'spring', stiffness: 400, damping: 30 }}>
+              {tab.icon(active)}
+            </motion.div>
+            <span style={{
+              fontSize: 9, fontWeight: active ? 800 : 600,
+              letterSpacing: '0.06em', textTransform: 'uppercase',
+              lineHeight: 1,
+            }}>
+              {tab.label}
+            </span>
+          </Link>
+        )
+      })}
+    </nav>
+  )
+}
+
 export default function Layout() {
   const [menuOpen, setMenuOpen] = useState(false)
   const { user, signOut } = useAuth()
@@ -142,7 +250,7 @@ export default function Layout() {
         background: headerBg, borderBottom: headerBorder,
         transition: 'background 0.4s, border 0.4s',
       }}>
-        <Link to="/courses" style={{ fontWeight: 900, fontSize: 16, letterSpacing: '-0.045em', color: menuOpen ? 'rgba(255,255,255,0.7)' : 'white', textDecoration: 'none', transition: 'color 0.3s', cursor: 'none' }}>
+        <Link to="/dashboard" style={{ fontWeight: 900, fontSize: 16, letterSpacing: '-0.045em', color: menuOpen ? 'rgba(255,255,255,0.7)' : 'white', textDecoration: 'none', transition: 'color 0.3s', cursor: 'none' }}>
           CLUTCH
         </Link>
 
@@ -246,7 +354,7 @@ export default function Layout() {
       </AnimatePresence>
 
       {/* ── MAIN ── */}
-      <main style={{ position: 'relative', zIndex: 10, minHeight: '100vh', paddingTop: '76px' }}>
+      <main style={{ position: 'relative', zIndex: 10, minHeight: '100vh', paddingTop: '76px', paddingBottom: 'calc(72px + env(safe-area-inset-bottom))' }}>
         <AnimatePresence mode="wait">
           <motion.div key={location.pathname}
             initial={{ opacity: 0, y: 10 }}
@@ -263,25 +371,14 @@ export default function Layout() {
         <motion.div key={pageName}
           initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
           transition={{ duration: 0.5 }}
-          style={{ position: 'fixed', bottom: 28, left: 28, zIndex: 50, pointerEvents: 'none', userSelect: 'none' }}>
-          <div style={{ fontSize: 8, letterSpacing: '0.25em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.18)', marginBottom: 3 }}>ELEMENT</div>
-          <div style={{ fontSize: 12, fontWeight: 900, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.35)' }}>{pageName}</div>
+          style={{ position: 'fixed', bottom: 'calc(76px + env(safe-area-inset-bottom))', left: 28, zIndex: 50, pointerEvents: 'none', userSelect: 'none' }}>
+          <div style={{ fontSize: 8, letterSpacing: '0.25em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.12)', marginBottom: 3 }}>ELEMENT</div>
+          <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.2)' }}>{pageName}</div>
         </motion.div>
       </AnimatePresence>
 
-      {/* ── SIDE NAV DOTS ── */}
-      <div style={{ position: 'fixed', right: 24, top: '50%', transform: 'translateY(-50%)', zIndex: 50, display: 'flex', flexDirection: 'column', gap: 10, pointerEvents: 'none' }}>
-        {NAV_ITEMS.map(item => (
-          <motion.div key={item.to}
-            animate={{
-              height: location.pathname === item.to ? 22 : 5,
-              backgroundColor: location.pathname === item.to ? '#3b82f6' : 'rgba(255,255,255,0.15)',
-              boxShadow: location.pathname === item.to ? '0 0 12px rgba(59,130,246,0.7)' : 'none',
-            }}
-            transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-            style={{ width: 4, borderRadius: 999 }} />
-        ))}
-      </div>
+      {/* ── BOTTOM NAV ── */}
+      <BottomNav pathname={location.pathname} />
     </div>
   )
 }

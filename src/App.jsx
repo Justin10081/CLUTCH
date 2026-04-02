@@ -12,6 +12,7 @@ import GPASimulator from './pages/GPASimulator'
 import Deadlines from './pages/Deadlines'
 import Social from './pages/Social'
 import Settings from './pages/Settings'
+import Admin from './pages/Admin'
 import NotFound from './pages/NotFound'
 
 function ProtectedRoute({ children }) {
@@ -45,6 +46,7 @@ export default function App() {
         <Route path="/deadlines" element={<Deadlines />} />
         <Route path="/social" element={<Social />} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/admin" element={<Admin />} />
       </Route>
       <Route path="*" element={<NotFound />} />
     </Routes>
