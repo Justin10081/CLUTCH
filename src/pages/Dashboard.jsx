@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { motion, AnimatePresence, useMotionValue, useSpring } from 'motion/react'
 import { useDeadlines } from '../context/DeadlinesContext'
-import { useGPA } from '../context/GPAContext'
+import { useCourses } from '../context/CoursesContext'
 import { useSessions } from '../context/SessionsContext'
 
 const ease = [0.16, 1, 0.3, 1]
@@ -237,7 +237,7 @@ function Onboarding() {
 export default function Dashboard() {
   const { user } = useAuth()
   const { deadlines } = useDeadlines()
-  const { courses } = useGPA()
+  const { courses } = useCourses()
   const { sessionCount: clutchSessions } = useSessions()
   const navigate = useNavigate()
   const { text: greeting, tag: greetTag, accent } = getGreeting()
