@@ -344,7 +344,7 @@ export default function Layout() {
       </AnimatePresence>
 
       {/* ── MAIN ── */}
-      <main style={{ position: 'relative', zIndex: 10, minHeight: '100vh', paddingTop: '76px', paddingBottom: 'calc(72px + env(safe-area-inset-bottom))' }}>
+      <main style={{ position: 'relative', zIndex: 10, minHeight: '100vh', paddingTop: '76px' }}>
         <AnimatePresence mode="wait">
           <motion.div key={location.pathname}
             initial={{ opacity: 0, y: 10 }}
@@ -361,14 +361,12 @@ export default function Layout() {
         <motion.div key={pageName}
           initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
           transition={{ duration: 0.5 }}
-          style={{ position: 'fixed', bottom: 'calc(76px + env(safe-area-inset-bottom))', left: 28, zIndex: 50, pointerEvents: 'none', userSelect: 'none' }}>
+          style={{ position: 'fixed', bottom: 28, left: 28, zIndex: 50, pointerEvents: 'none', userSelect: 'none' }}>
           <div style={{ fontSize: 8, letterSpacing: '0.25em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.12)', marginBottom: 3 }}>ELEMENT</div>
           <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.2)' }}>{pageName}</div>
         </motion.div>
       </AnimatePresence>
 
-      {/* ── BOTTOM NAV ── */}
-      <BottomNav pathname={location.pathname} />
     </div>
   )
 }
