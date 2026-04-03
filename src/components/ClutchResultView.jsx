@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -871,7 +871,295 @@ export default function ClutchResultView({ result, topic, courseName, uploadedFi
             </div>
           </ScanSection>
         )}
+
+        {/* bottom spacer so FAB doesn't cover content */}
+        <div style={{ height: 100 }} />
       </div>
+
+      {/* ── AI TUTOR CHAT ── */}
+      <ClutchChat result={result} topic={topic} courseName={courseName} />
+    </>
+  )
+}
+
+// ─── ClutchChat ───────────────────────────────────────────────────────────────
+function ClutchChat({ result, topic, courseName }) {
+  const [open, setOpen] = useState(false)
+  const [messages, setMessages] = useState([])
+  const [input, setInput] = useState('')
+  const [typing, setTyping] = useState(false)
+  const [unread, setUnread] = useState(0)
+  const bottomRef = useRef(null)
+  const inputRef = useRef(null)
+
+  useEffect(() => {
+    if (open) {
+      setUnread(0)
+      setTimeout(() => inputRef.current?.focus(), 120)
+    }
+  }, [open])
+
+  useEffect(() => {
+    if (open) bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages, typing, open])
+
+  // Build a compact context summary from the study guide
+  const buildContext = () => {
+    const parts = []
+    parts.push(`You are a brilliant, patient tutor helping a student study "${topic || courseName || 'this subject'}".`)
+    if (courseName) parts.push(`Course: ${courseName}.`)
+    if (result.contentType) parts.push(`Content type: ${result.contentType}.`)
+    if (result.plainEnglish) parts.push(`\nOVERVIEW:\n${result.plainEnglish.slice(0, 1200)}`)
+    if (result.coreConcepts?.length) {
+      parts.push(`\nKEY CONCEPTS:\n${result.coreConcepts.slice(0, 8).map(c => `- ${c.term}: ${(c.explanation || '').slice(0, 200)}`).join('\n')}`)
+    }
+    if (result.cheatSheet?.length) {
+      parts.push(`\nKEY FACTS:\n${result.cheatSheet.slice(0, 12).map(f => `- ${f}`).join('\n')}`)
+    }
+    if (result.formulas?.length) {
+      parts.push(`\nFORMULAS:\n${result.formulas.slice(0, 6).map(f => `- ${f.name}: ${f.formula} (${f.whenToUse || ''})`).join('\n')}`)
+    }
+    if (result.misconceptions?.length) {
+      parts.push(`\nCOMMON MISTAKES:\n${result.misconceptions.slice(0, 4).map(m => `- MYTH: ${m.myth} → REALITY: ${m.reality}`).join('\n')}`)
+    }
+    parts.push(`\nYour role: Answer any question the student has about this material. Be a great teacher — clear, specific, patient. Use analogies. Give step-by-step when asked. If they ask "how do I solve X", walk through it completely. Keep answers focused and direct. Use the study guide context above when relevant.`)
+    return parts.join('\n')
+  }
+
+  const send = async () => {
+    const text = input.trim()
+    if (!text || typing) return
+    const userMsg = { role: 'user', content: text }
+    const next = [...messages, userMsg]
+    setMessages(next)
+    setInput('')
+    setTyping(true)
+
+    try {
+      const systemPrompt = buildContext()
+      const payload = {
+        model: 'llama-3.3-70b-versatile',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          ...next.slice(-10), // last 10 messages for context window
+        ],
+        temperature: 0.4,
+        max_tokens: 1200,
+      }
+      const res = await fetch('/api/groq', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      if (!res.ok) throw new Error('API error')
+      const data = await res.json()
+      const reply = data.choices?.[0]?.message?.content || "I'm having trouble responding right now. Try again."
+      setMessages(prev => [...prev, { role: 'assistant', content: reply }])
+      if (!open) setUnread(u => u + 1)
+    } catch {
+      setMessages(prev => [...prev, { role: 'assistant', content: "Sorry, I couldn't reach the AI right now. Check your connection and try again." }])
+    } finally {
+      setTyping(false)
+    }
+  }
+
+  const SUGGESTIONS = [
+    `Can you explain ${topic || 'this'} like I'm a complete beginner?`,
+    'What are the most important things to memorize?',
+    'Walk me through a practice problem step by step',
+    'What mistakes do students usually make on this?',
+    'Give me a real-world example of this',
+    'How would you solve a typical exam question on this?',
+  ]
+
+  const renderMessage = (msg, i) => {
+    const isUser = msg.role === 'user'
+    return (
+      <motion.div key={i}
+        initial={{ opacity: 0, y: 8, scale: 0.97 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.25, ease }}
+        style={{ display: 'flex', justifyContent: isUser ? 'flex-end' : 'flex-start', marginBottom: 10 }}>
+        {!isUser && (
+          <div style={{ width: 26, height: 26, borderRadius: '50%', background: `linear-gradient(135deg,${VIOLET},${BLUE})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, flexShrink: 0, marginRight: 8, alignSelf: 'flex-end', marginBottom: 2 }}>⚡</div>
+        )}
+        <div style={{
+          maxWidth: '78%',
+          padding: isUser ? '10px 14px' : '12px 16px',
+          borderRadius: isUser ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
+          background: isUser
+            ? `linear-gradient(135deg,${BLUE},${CYAN})`
+            : 'rgba(255,255,255,0.06)',
+          border: isUser ? 'none' : '1px solid rgba(255,255,255,0.08)',
+          fontSize: 13,
+          lineHeight: 1.65,
+          color: isUser ? '#fff' : 'rgba(255,255,255,0.88)',
+          whiteSpace: 'pre-wrap',
+          wordBreak: 'break-word',
+        }}>
+          {msg.content}
+        </div>
+      </motion.div>
+    )
+  }
+
+  return (
+    <>
+      {/* ── FAB Button ── */}
+      <motion.button
+        initial={{ scale: 0, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ delay: 1.2, type: 'spring', stiffness: 260, damping: 18 }}
+        whileHover={{ scale: 1.08, boxShadow: `0 0 40px ${VIOLET}60, 0 8px 24px rgba(0,0,0,0.5)` }}
+        whileTap={{ scale: 0.94 }}
+        onClick={() => setOpen(o => !o)}
+        style={{
+          position: 'fixed', bottom: 24, right: 20, zIndex: 300,
+          width: 56, height: 56, borderRadius: '50%',
+          background: open ? 'rgba(30,32,40,0.95)' : `linear-gradient(135deg,${VIOLET},${BLUE})`,
+          border: open ? `1px solid rgba(255,255,255,0.12)` : 'none',
+          cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          boxShadow: open ? 'none' : `0 0 28px ${VIOLET}50, 0 4px 16px rgba(0,0,0,0.4)`,
+          color: '#fff',
+          transition: 'background 0.3s, box-shadow 0.3s',
+        }}>
+        <AnimatePresence mode="wait">
+          {open ? (
+            <motion.svg key="close" initial={{ rotate: -90, opacity: 0 }} animate={{ rotate: 0, opacity: 1 }} exit={{ rotate: 90, opacity: 0 }} transition={{ duration: 0.2 }}
+              width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </motion.svg>
+          ) : (
+            <motion.span key="icon" initial={{ scale: 0.7, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.7, opacity: 0 }} style={{ fontSize: 22 }}>💬</motion.span>
+          )}
+        </AnimatePresence>
+        {/* Unread badge */}
+        {unread > 0 && !open && (
+          <div style={{ position: 'absolute', top: -2, right: -2, width: 18, height: 18, borderRadius: '50%', background: RED, fontSize: 9, fontWeight: 900, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid #080a0e' }}>
+            {unread}
+          </div>
+        )}
+      </motion.button>
+
+      {/* ── Chat Panel ── */}
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: 32, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 24, scale: 0.97 }}
+            transition={{ duration: 0.32, ease }}
+            style={{
+              position: 'fixed', bottom: 90, right: 16, zIndex: 299,
+              width: 'min(420px, calc(100vw - 32px))',
+              height: 'min(560px, calc(100vh - 120px))',
+              background: '#0d0f16',
+              border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: 22,
+              display: 'flex', flexDirection: 'column',
+              boxShadow: `0 0 60px ${VIOLET}18, 0 24px 60px rgba(0,0,0,0.6)`,
+              overflow: 'hidden',
+            }}>
+
+            {/* Header */}
+            <div style={{ padding: '14px 18px', borderBottom: '1px solid rgba(255,255,255,0.07)', background: 'rgba(255,255,255,0.02)', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+              <div style={{ width: 32, height: 32, borderRadius: '50%', background: `linear-gradient(135deg,${VIOLET},${BLUE})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0 }}>⚡</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 900, color: 'white', letterSpacing: '-0.01em' }}>AI Tutor</div>
+                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', marginTop: 1 }}>
+                  {topic || courseName || 'Study Guide'} · Ask anything
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <div style={{ width: 6, height: 6, borderRadius: '50%', background: GREEN, boxShadow: `0 0 8px ${GREEN}` }} />
+                <span style={{ fontSize: 9, fontWeight: 700, color: GREEN, letterSpacing: '0.1em' }}>ONLINE</span>
+              </div>
+            </div>
+
+            {/* Messages */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '16px 14px 8px', display: 'flex', flexDirection: 'column' }}>
+              {messages.length === 0 ? (
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.15 }}>
+                  <div style={{ textAlign: 'center', marginBottom: 20 }}>
+                    <div style={{ fontSize: 28, marginBottom: 8 }}>👋</div>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: 'rgba(255,255,255,0.7)', marginBottom: 4 }}>I've read your entire study guide.</div>
+                    <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', lineHeight: 1.5 }}>Ask me anything — I'll explain it clearly,<br />step by step, however you need.</div>
+                  </div>
+                  <div style={{ fontSize: 9, fontWeight: 900, letterSpacing: '0.2em', color: 'rgba(255,255,255,0.2)', marginBottom: 10 }}>SUGGESTED</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {SUGGESTIONS.map((s, i) => (
+                      <motion.button key={i}
+                        initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.1 + i * 0.05 }}
+                        whileHover={{ x: 3, background: 'rgba(139,92,246,0.12)' }}
+                        onClick={() => { setInput(s); setTimeout(() => inputRef.current?.focus(), 50) }}
+                        style={{ padding: '9px 13px', borderRadius: 10, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.6)', fontSize: 12, textAlign: 'left', cursor: 'pointer', transition: 'all 0.15s', lineHeight: 1.4 }}>
+                        {s}
+                      </motion.button>
+                    ))}
+                  </div>
+                </motion.div>
+              ) : (
+                <>
+                  {messages.map(renderMessage)}
+                  {typing && (
+                    <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                      <div style={{ width: 26, height: 26, borderRadius: '50%', background: `linear-gradient(135deg,${VIOLET},${BLUE})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, flexShrink: 0 }}>⚡</div>
+                      <div style={{ padding: '10px 14px', borderRadius: '18px 18px 18px 4px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)', display: 'flex', gap: 4, alignItems: 'center' }}>
+                        {[0, 1, 2].map(j => (
+                          <motion.div key={j} animate={{ y: [0, -4, 0] }} transition={{ duration: 0.6, delay: j * 0.15, repeat: Infinity }}
+                            style={{ width: 5, height: 5, borderRadius: '50%', background: 'rgba(255,255,255,0.4)' }} />
+                        ))}
+                      </div>
+                    </motion.div>
+                  )}
+                  <div ref={bottomRef} />
+                </>
+              )}
+            </div>
+
+            {/* Input */}
+            <div style={{ padding: '10px 12px', borderTop: '1px solid rgba(255,255,255,0.07)', background: 'rgba(255,255,255,0.02)', flexShrink: 0 }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+                <textarea
+                  ref={inputRef}
+                  value={input}
+                  onChange={e => setInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
+                  placeholder="Ask anything about this material..."
+                  rows={1}
+                  style={{
+                    flex: 1, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: 12, padding: '10px 14px', color: '#fff', fontSize: 13, outline: 'none',
+                    resize: 'none', fontFamily: 'inherit', lineHeight: 1.5, maxHeight: 100, overflowY: 'auto',
+                    transition: 'border-color 0.2s',
+                  }}
+                  onFocus={e => e.target.style.borderColor = `${VIOLET}60`}
+                  onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.1)'}
+                />
+                <motion.button
+                  whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.93 }}
+                  onClick={send}
+                  disabled={!input.trim() || typing}
+                  style={{
+                    width: 40, height: 40, borderRadius: 12, flexShrink: 0,
+                    background: input.trim() && !typing ? `linear-gradient(135deg,${VIOLET},${BLUE})` : 'rgba(255,255,255,0.06)',
+                    border: 'none', cursor: input.trim() && !typing ? 'pointer' : 'default',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    transition: 'background 0.2s',
+                    boxShadow: input.trim() && !typing ? `0 0 16px ${VIOLET}40` : 'none',
+                  }}>
+                  <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="white" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 19V5m0 0l-7 7m7-7l7 7" />
+                  </svg>
+                </motion.button>
+              </div>
+              <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.18)', marginTop: 6, textAlign: 'center', letterSpacing: '0.05em' }}>
+                Enter to send · Shift+Enter for new line
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </>
   )
 }
