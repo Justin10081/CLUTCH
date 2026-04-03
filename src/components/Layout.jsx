@@ -26,16 +26,6 @@ const NAV_ITEMS = [
 
 const BOTTOM_TABS = [
   {
-    to: '/dashboard',
-    label: 'Home',
-    icon: (active) => (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={active ? 0 : 1.8} strokeLinecap="round" strokeLinejoin="round">
-        <path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H5a1 1 0 01-1-1V9.5z" />
-        <path d="M9 21V12h6v9" strokeWidth="1.8" fill="none" />
-      </svg>
-    ),
-  },
-  {
     to: '/courses',
     label: 'Courses',
     icon: (active) => (
