@@ -257,10 +257,15 @@ function DeadlineRow({ d, idx, onComplete, onEdit, onDelete }) {
 
       {/* Title + course */}
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: 'rgba(255,255,255,0.85)', textDecoration: d.completed ? 'line-through' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: 'rgba(255,255,255,0.85)', textDecoration: d.completed ? 'line-through' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: d.course ? 5 : 0 }}>
           {d.title}
         </div>
-        {d.course && <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.28)', marginTop: 2, fontWeight: 600 }}>{d.course}</div>}
+        {d.course && (
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '2px 8px', borderRadius: 5, background: `${d.courseColor || '#3b82f6'}18`, border: `1px solid ${d.courseColor || '#3b82f6'}28` }}>
+            <div style={{ width: 5, height: 5, borderRadius: '50%', background: d.courseColor || '#3b82f6', flexShrink: 0 }} />
+            <span style={{ fontSize: 9, fontWeight: 900, color: d.courseColor || '#3b82f6', letterSpacing: '0.1em', textTransform: 'uppercase' }}>{d.course}</span>
+          </div>
+        )}
       </div>
 
       {/* Time left */}
