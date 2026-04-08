@@ -116,7 +116,7 @@ const RED = '#ef4444'
 const GREEN = '#34d399'
 const ease = [0.16, 1, 0.3, 1]
 
-const LOADING_STEPS = ['Reading your materials...', 'Detecting subject type...', 'Building concept map...', 'Writing exam questions...', 'Generating practice quiz...', 'Finalizing guide...']
+const LOADING_STEPS = ['Reading your materials...', 'Identifying key concepts...', 'Writing your lecture...', 'Building practice questions...', 'Generating quiz...', 'Finishing your course pack...']
 
 // ─── LoadingRing ──────────────────────────────────────────────────────────────
 function LoadingRing({ size, color, duration, reverse = false, offset = 0 }) {
@@ -222,77 +222,107 @@ export default function ClutchMode() {
     let data = null
     try {
       setLoadingStep(1)
-      const prompt = `You are the best professor who ever taught — the one students remember for life because you made everything click. Your job is not to summarize. Your job is to TEACH. Create a study guide so complete and so clear that a student who reads it could walk into an exam tomorrow and ace it.
+      const prompt = `You are a world-class professor who has taught this subject for 20 years. A student has one night before their exam. Your job is not to give study tips — your job is to TEACH THEM THE ENTIRE COURSE right now, from scratch, in a single session. You are delivering a complete, compressed lecture. Everything they need to understand, know, and apply must come from you, tonight.
+
+Treat the uploaded materials as your lecture notes and course content. Extract every concept, definition, formula, date, name, process, and relationship from them. Teach it all. Leave nothing important out.
 
 TOPIC: "${effectiveTopic}"
 ${courseCtx ? `COURSE: ${courseCtx.name} (${courseCtx.code || ''})${courseCtx.professor ? ` — Prof. ${courseCtx.professor}` : ''}` : ''}
 EXAM TYPE: ${examType || 'mixed'} | LEVEL: ${courseLevel || 'undergraduate'}
-${focusAreas ? `STUDENT SPECIFICALLY STRUGGLES WITH: ${focusAreas}` : ''}
-${fileContext ? `\nUPLOADED MATERIALS — TREAT THESE AS GROUND TRUTH. Extract exact terminology, definitions, dates, names, formulas, and examples directly from this content:\n${fileContext.slice(0, 14000)}` : ''}
+${focusAreas ? `STUDENT SPECIFICALLY NEEDS HELP WITH: ${focusAreas}` : ''}
+${fileContext ? `\nCOURSE MATERIALS — THIS IS YOUR LECTURE CONTENT. Teach everything in these materials. Every definition, concept, formula, process, event, and relationship is fair game for the exam:\n${fileContext.slice(0, 14000)}` : ''}
 
 STEP 1 — Detect content type:
 - "technical": math, CS, programming, physics, chemistry, engineering, statistics, econometrics
 - "conceptual": history, philosophy, biology (descriptive), psychology, literature, law, political science, sociology, art history
 - "mixed": business, general science, economics (qualitative), nursing, social sciences
 
-STEP 2 — Return ONLY valid JSON with this exact schema:
+STEP 2 — Deliver your lecture as ONLY valid JSON with this exact schema:
+
 {
   "contentType": "technical|conceptual|mixed",
 
-  "plainEnglish": "5-7 flowing paragraphs. NO bullet points. Tell the STORY of this subject like a great professor. Open with the BIG PICTURE — why does this subject exist, what problem does it solve? Then build up the key ideas with vivid real-world analogies. Show how concepts connect and depend on each other. End with what this means for the exam. Write like you're at a coffee shop explaining to a brilliant friend who never took this class.",
+  "plainEnglish": "This is your lecture. Write 6-8 dense, flowing paragraphs — NO bullet points. You are standing at the front of the class. Start by answering: what is this subject really about, and why does it exist? Then teach each major idea in sequence, building on the last. Explain the mechanisms — not just what things are called, but HOW they work and WHY they work that way. Use vivid, concrete analogies that make abstract ideas tangible. Show how every concept connects to the others. By the end, the student should understand the subject at a deep level, not just have memorized facts. Write with the authority, clarity, and enthusiasm of the best professor they've ever had.",
 
-  "teacherNotes": ["4-6 strings. These are the professor insights that never appear in textbooks — the 'by the way' moments. Exam traps. Why the hardest part trips people up. Deep connections between concepts. The pattern examiners test most. Be brutally specific to THIS exact material."],
+  "teacherNotes": ["5-7 strings. These are the things you'd say to a student after class — the real insights. The exact thing that separates students who truly get it from those who just memorized. Pinpoint the hardest concept and explain precisely why it's hard and how to actually understand it. Call out the connections between concepts that the textbook never makes explicit. Be completely specific to THIS material — no generic advice."],
 
-  "coreConcepts": [{"term": "exact term from material", "explanation": "4-6 sentences. Explain the MECHANISM — how it actually works, not just what it is. Use a concrete analogy. Cover all edge cases.", "whyItMatters": "Why this concept is load-bearing for everything else in the subject", "commonMistake": "The exact wrong way students think about this — be specific", "example": "A vivid, concrete, real-world example with enough detail to be instructive"}],
+  "coreConcepts": [
+    {
+      "term": "exact term from the course material",
+      "explanation": "Teach this concept as a professor would. 4-6 sentences minimum. Start with what it IS in plain language. Then explain the mechanism — HOW it works at a deeper level. Use a concrete analogy or real-world example that makes it click. Cover the edge cases and conditions under which it applies or breaks down.",
+      "whyItMatters": "Why is this concept central to the subject? What breaks down if you don't understand it?",
+      "commonMistake": "The specific, concrete misconception students have about this concept — stated precisely",
+      "example": "A detailed, realistic example that demonstrates this concept in action. Specific enough to be instructive."
+    }
+  ],
 
-  "cheatSheet": ["15-22 items. Each one a SPECIFIC fact, rule, definition, date, name, or relationship directly from the material — not generic study advice. If materials were uploaded, extract exact content from them."],
+  "cheatSheet": ["20-25 items. This is the professor's condensed course sheet — every critical fact, definition, formula, name, date, rule, and relationship from the material. Each item must be a complete, standalone fact a student can read and immediately know. If materials were uploaded, pull exact content from them. Zero filler."],
 
   "diagrams": [{"title": "string", "type": "flowchart|timeline|comparison|hierarchy|cycle", "description": "string", "nodes": [{"id": "string", "label": "string", "detail": "string"}], "edges": [{"from": "string", "to": "string", "label": "string"}], "events": [{"date": "string", "title": "string", "detail": "string"}], "columns": ["string"], "rows": [["string"]], "phases": [{"label": "string", "detail": "string"}]}],
 
-  "stepByStep": [{"title": "string", "context": "string — when to use this procedure", "steps": ["string — complete, specific step"]}],
+  "stepByStep": [{"title": "string", "context": "Exactly when and why you would use this procedure", "steps": ["Complete, specific step — every sub-step included, nothing assumed"]}],
 
-  "codeExamples": [{"language": "string", "title": "string", "code": "string", "explanation": "string"}],
+  "codeExamples": [{"language": "string", "title": "string", "code": "string", "explanation": "Line-by-line explanation of what the code does and why"}],
 
-  "formulas": [{"name": "string", "formula": "string", "whenToUse": "string — the exact situation", "variables": "string — what each variable means", "derivation": "string — intuition for why this formula works"}],
+  "formulas": [{"name": "string", "formula": "string", "whenToUse": "The exact situation that calls for this formula — be specific", "variables": "What every variable means in plain language", "derivation": "The intuition for WHY this formula is true — not just how to use it"}],
 
-  "workedExamples": [{"problem": "string — a realistic exam-style problem", "approach": "string — how to recognize what type of problem this is and what strategy to use", "solution": "string — complete step-by-step solution with every step shown and explained", "keyInsight": "string — the one thing that makes this problem click"}],
+  "workedExamples": [{"problem": "A realistic, exam-quality problem", "approach": "How to recognize what kind of problem this is and which method to use", "solution": "Complete solution with every step shown, explained, and justified — nothing skipped", "keyInsight": "The one conceptual insight that makes this problem type solvable"}],
 
-  "likelyQuestions": [{"question": "string — exam-realistic question at ${courseLevel} level. Mix: 30% define/explain, 40% apply/analyze, 30% compare/evaluate/predict", "answer": "string — a model answer showing exactly the depth and structure an A-grade response requires. Write what a top student would write.", "howToStructure": "string — tactical advice: what to write first, key terms to include, common ways to lose marks"}],
+  "likelyQuestions": [
+    {
+      "question": "A realistic exam question at ${courseLevel} level, drawn from the actual material. Mix: 30% define/explain, 40% apply/analyze, 30% compare/evaluate/synthesize.",
+      "answer": "A complete model answer written the way a top student would write it. Show the full reasoning, use precise terminology, cover every mark-worthy point. This is what an A looks like.",
+      "howToStructure": "Exactly how to open the answer, what to cover in the body, key terms that must appear, and how to close it."
+    }
+  ],
 
-  "misconceptions": [{"myth": "string — a specific wrong belief students have, stated as they would say it", "reality": "string — the correct understanding, explained clearly", "whyPeopleBelieveIt": "string — the psychological reason this mistake is so common"}],
+  "misconceptions": [{"myth": "The specific wrong belief — stated the way students actually say it", "reality": "The correct understanding taught clearly", "whyPeopleBelieveIt": "The exact reason this misconception is so persistent"}],
 
-  "flashcards": [{"front": "string — term, concept, or question — short and specific", "back": "string — precise answer or definition with a concrete example"}],
+  "flashcards": [{"front": "A specific term, concept, or question", "back": "Precise definition or answer with a concrete example that anchors it"}],
 
-  "mcqQuestions": [{"question": "string — a specific, application-level question. Not 'what is X' but 'in situation Y, what happens to X?'", "options": {"A": "string — plausible distractor", "B": "string — plausible distractor", "C": "string — correct answer (randomize which letter is correct)", "D": "string — plausible distractor"}, "correct": "C", "explanation": "string — explain why the correct answer is right. Then explain why each wrong option is wrong. Be specific."}],
+  "mcqQuestions": [
+    {
+      "question": "Application or analysis question drawn from the actual course content — not abstract. Put the student in a scenario.",
+      "options": {
+        "A": "A plausible but wrong answer — based on a common misconception",
+        "B": "A plausible but wrong answer — partially correct but missing something critical",
+        "C": "The correct answer — precise and complete",
+        "D": "A plausible but wrong answer — a different concept students confuse with this"
+      },
+      "correct": "C",
+      "explanation": "Explain exactly why C is correct, then explain why each of A, B, and D is wrong — specifically. This is teaching, not just answer-checking."
+    }
+  ],
 
-  "examStrategy": ["string — a specific, actionable exam tip for THIS exact subject and exam type. Not generic advice. Tell them exactly what to do: what to write first, what keywords to include, how to structure an answer, how to check their work, what examiners mark on."],
+  "examStrategy": ["4-6 strings. These are subject-specific tactical instructions based on the actual content. Tell the student exactly what an examiner is looking for in THIS subject — the precise vocabulary, argument structure, or method they must demonstrate. What separates a B from an A answer in this course specifically."],
 
-  "mnemonics": [{"concept": "string — the exact term or concept to remember", "device": "string — the mnemonic: acronym, rhyme, story, visual hook, or analogy that makes it stick", "howToUse": "string — how to retrieve and deploy this during an exam"}],
+  "mnemonics": [{"concept": "The exact term, formula, or sequence to remember", "device": "A sharp, memorable mnemonic — acronym, vivid story, analogy, or visual hook", "howToUse": "How to use this mnemonic to instantly retrieve the concept during an exam"}],
 
-  "summary": "3-4 sentences. The absolute essence: if you only have 5 minutes before the exam, here is what you cannot afford to forget."
+  "summary": "4-5 sentences. You're the professor and this is your closing statement of the lecture. Tell the student exactly what the course is really about at its core, what the 3-4 most important things they cannot forget are, and what distinguishes someone who truly understands this material from someone who just crammed it."
 }
 
 DIAGRAM RULES:
-- "flowchart": nodes (id+label+detail) + edges (from+to+label). For processes, algorithms, cause-effect.
-- "timeline": events (date+title+detail). For history, chronological sequences.
-- "comparison": columns + rows 2D array. For comparing 3+ items across attributes.
-- "hierarchy": nodes + edges with parent-child. For taxonomies, classifications.
-- "cycle": phases (label+detail). For repeating processes (cell cycle, business cycle, etc.).
+- "flowchart": nodes (id+label+detail) + edges (from+to+label). For processes, algorithms, cause-effect chains.
+- "timeline": events (date+title+detail). For history, chronological developments, sequences.
+- "comparison": columns + rows 2D array. For comparing 3+ items across multiple attributes.
+- "hierarchy": nodes + edges (parent→child). For taxonomies, classifications, organizational structures.
+- "cycle": phases (label+detail). For repeating processes (cell cycle, water cycle, business cycle, feedback loops).
 
-CONTENT-TYPE OUTPUT RULES:
-TECHNICAL: 4-6 complete workedExamples with every step shown. Strong stepByStep. codeExamples if CS/programming. 8-12 mcqQuestions at application level. Mnemonics for formulas.
-CONCEPTUAL: Rich plainEnglish (6-7 paragraphs, vivid analogies). 3-5 diagrams (timeline/comparison/hierarchy). Deep coreConcepts. 10-12 mcqQuestions testing interpretation and application. Mnemonics for key terms and sequences.
-MIXED: Balance all sections. 8-10 mcqQuestions.
+CONTENT-TYPE LECTURE STANDARDS:
+TECHNICAL: Teach the math/logic/code deeply. 4-6 workedExamples showing every step. Strong stepByStep for each procedure. codeExamples with full explanation for CS/programming. 10-12 mcqQuestions at application level. Formulas with derivation intuition, not just the formula. Mnemonics for formula variables.
+CONCEPTUAL: Teach the ideas, movements, arguments, and their significance. 6-8 paragraph lecture (plainEnglish) with vivid real-world analogies. 3-5 diagrams (timeline/comparison/hierarchy). 8-10 deep coreConcepts. 10-12 mcqQuestions testing interpretation, causation, and evaluation. Mnemonics for key sequences and names.
+MIXED: Teach both the theory and the application equally. Balance all sections. 8-10 mcqQuestions mixing conceptual and applied.
 
-NON-NEGOTIABLE QUALITY STANDARDS:
-1. If materials were uploaded: every fact, definition, formula, and example MUST come from those materials. Do not invent content.
-2. coreConcepts: minimum 6, maximum 10. Teach the mechanism — HOW it works, not just WHAT it is.
-3. cheatSheet: minimum 15 SPECIFIC facts from the actual subject. Zero generic study tips.
-4. mcqQuestions: minimum 8, maximum 12. EXACTLY 30% recall / 40% application / 30% analysis. Each wrong option must be a plausible distractor — not obviously wrong.
-5. likelyQuestions: minimum 7, maximum 10. Model answers must show what a top-grade response looks like in full.
-6. examStrategy: minimum 4 tips, each specific to THIS subject. Zero generic tips like "read carefully."
-7. flashcards: minimum 10 cards. Front = specific term or question. Back = precise answer + example.
-8. Every single section must reference THIS specific topic — not a generic template.`
+NON-NEGOTIABLE STANDARDS — every output must meet these or it fails:
+1. TEACH, don't summarize. Every section must explain mechanisms, causes, and implications — not just list facts.
+2. If materials were uploaded: every concept, definition, and example MUST come from those materials. Do not invent or substitute content.
+3. coreConcepts: minimum 7, maximum 12. Each one taught fully — mechanism, analogy, edge case, mistake.
+4. cheatSheet: minimum 20 items. Every item a specific, standalone fact from the actual subject. Zero generic advice.
+5. mcqQuestions: minimum 8, maximum 12. Each wrong option is a plausible misconception — never obviously wrong.
+6. likelyQuestions: minimum 7, maximum 10. Model answers must be complete A-grade responses, not outlines.
+7. flashcards: minimum 12 cards. Every card tied to a specific concept from the material.
+8. plainEnglish: minimum 6 paragraphs of actual teaching — no bullet points, no hedging, no filler.
+9. Every section references THIS specific topic and material — not a generic template.`
 
       const token = await getAuthToken()
       const res = await fetch('/api/groq', {
