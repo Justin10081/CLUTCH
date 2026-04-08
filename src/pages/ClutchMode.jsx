@@ -58,8 +58,34 @@ function generateFallback(topic, files) {
     ],
     flashcards: [
       { front: `What is the central definition of the main concept in ${topic}?`, back: 'State the precise definition with all qualifying conditions.' },
+      { front: `What causes the main process in ${topic}?`, back: 'Identify the trigger, the mechanism, and the outcome.' },
+      { front: `What is the most common exam question structure in ${topic}?`, back: 'Define → Explain mechanism → Give example → State significance.' },
     ],
-    summary: `${topic} — focus on: precise definitions, causal mechanisms, cause-effect chains, and exceptions.`,
+    mcqQuestions: [
+      {
+        question: `Which of the following BEST describes the core mechanism in ${topic}?`,
+        options: { A: 'A surface-level description that misses the underlying cause', B: 'The correct mechanism — how the concept actually works at a fundamental level', C: 'A common misconception that reverses cause and effect', D: 'A related but distinct concept from a different context' },
+        correct: 'B',
+        explanation: 'B is correct because it describes the underlying mechanism, not just the surface phenomenon. A is wrong — it describes the symptom, not the cause. C reverses the causal direction, which is the most common mistake. D is a separate concept that students often confuse with this one.',
+      },
+      {
+        question: `A student applies the main principle of ${topic} to a new scenario. What is the most critical thing they must check first?`,
+        options: { A: 'Whether the formula or definition they memorized matches the question wording', B: 'Whether all the preconditions and assumptions of the principle are satisfied', C: 'Whether the answer matches what they expect intuitively', D: 'Whether they have enough time left to show all their work' },
+        correct: 'B',
+        explanation: 'B is correct — principles and rules in most subjects only apply under specific conditions. Checking preconditions prevents misapplication. A describes memorization, not understanding. C and D describe test-taking tactics, not the analytical process.',
+      },
+    ],
+    examStrategy: [
+      `In ${topic}, always begin your answer by stating the precise definition of the key term being asked about. Examiners mark on terminology first.`,
+      `For ${topic} questions that ask you to "explain" — use the structure: Define → Mechanism → Example → Significance. This covers all mark-scheme criteria.`,
+      `The most common exam trap in ${topic} is confusing correlation with causation, or reversing the direction of a relationship. Always specify which variable causes which.`,
+      `Allocate marks proportionally: a 10-mark question expects roughly 10 distinct, substantive points or a developed argument of equivalent depth.`,
+    ],
+    mnemonics: [
+      { concept: `Core principle of ${topic}`, device: 'D-M-E-S: Define, Mechanism, Example, Significance — the four things every exam answer needs', howToUse: 'When you read any ${topic} question, silently run through DMES to ensure your answer covers all marks.' },
+      { concept: 'Causal vs. correlational reasoning', device: '"Cause Comes Before, Correlation Could Be Either" — if A → B, then A must precede B in a logical chain', howToUse: 'Before writing any causal claim, ask: does A actually produce B, or do they just co-occur?' },
+    ],
+    summary: `${topic} — the three things you cannot forget: (1) precise definitions with all conditions, (2) the causal mechanisms (what causes what and why), and (3) at least one concrete example for every major concept.`,
   }
 }
 
@@ -90,7 +116,7 @@ const RED = '#ef4444'
 const GREEN = '#34d399'
 const ease = [0.16, 1, 0.3, 1]
 
-const LOADING_STEPS = ['Reading your materials...', 'Detecting subject type...', 'Building adaptive guide...', 'Finalizing content...']
+const LOADING_STEPS = ['Reading your materials...', 'Detecting subject type...', 'Building concept map...', 'Writing exam questions...', 'Generating practice quiz...', 'Finalizing guide...']
 
 // ─── LoadingRing ──────────────────────────────────────────────────────────────
 function LoadingRing({ size, color, duration, reverse = false, offset = 0 }) {
@@ -196,63 +222,83 @@ export default function ClutchMode() {
     let data = null
     try {
       setLoadingStep(1)
-      const prompt = `You are a brilliant, dedicated university professor who genuinely wants students to deeply understand this material — not just pass the test. Teach with the depth and clarity of someone who loves the subject.
+      const prompt = `You are the best professor who ever taught — the one students remember for life because you made everything click. Your job is not to summarize. Your job is to TEACH. Create a study guide so complete and so clear that a student who reads it could walk into an exam tomorrow and ace it.
 
 TOPIC: "${effectiveTopic}"
 ${courseCtx ? `COURSE: ${courseCtx.name} (${courseCtx.code || ''})${courseCtx.professor ? ` — Prof. ${courseCtx.professor}` : ''}` : ''}
 EXAM TYPE: ${examType || 'mixed'} | LEVEL: ${courseLevel || 'undergraduate'}
-${focusAreas ? `STUDENT STRUGGLES WITH: ${focusAreas}` : ''}
-${fileContext ? `\nUPLOADED MATERIALS (use these as your primary source):\n${fileContext.slice(0, 12000)}` : ''}
+${focusAreas ? `STUDENT SPECIFICALLY STRUGGLES WITH: ${focusAreas}` : ''}
+${fileContext ? `\nUPLOADED MATERIALS — TREAT THESE AS GROUND TRUTH. Extract exact terminology, definitions, dates, names, formulas, and examples directly from this content:\n${fileContext.slice(0, 14000)}` : ''}
 
 STEP 1 — Detect content type:
-- "technical": math, CS, programming, physics, chemistry, engineering, statistics, economics with equations
-- "conceptual": history, philosophy, descriptive biology, psychology, literature, law, political science, sociology, art
-- "mixed": business, general science, economics without heavy math
+- "technical": math, CS, programming, physics, chemistry, engineering, statistics, econometrics
+- "conceptual": history, philosophy, biology (descriptive), psychology, literature, law, political science, sociology, art history
+- "mixed": business, general science, economics (qualitative), nursing, social sciences
 
-STEP 2 — Generate maximally useful study content. Return ONLY valid JSON:
+STEP 2 — Return ONLY valid JSON with this exact schema:
 {
   "contentType": "technical|conceptual|mixed",
-  "plainEnglish": "5-6 flowing paragraphs. Tell the STORY of this subject. Use vivid real-world analogies. Explain the BIG PICTURE first, then how the pieces connect. Write like you're explaining to a smart friend over coffee — conversational, specific, insightful. No bullet points.",
-  "teacherNotes": ["3-5 strings: professor-level insights students typically miss. The 'by the way' moments that make things click. Deeper connections, exam traps, why something works the way it does. Be specific to this exact material."],
-  "coreConcepts": [{"term": "string", "explanation": "string — thorough, specific content explanation (3-5 sentences). Explain the mechanism, not just the definition.", "whyItMatters": "string — why does this concept matter?", "commonMistake": "string — the specific wrong way students think about this", "example": "string — vivid, concrete, specific example"}],
-  "cheatSheet": ["12-20 specific facts, rules, definitions, relationships — directly from the material"],
-  "diagrams": [{"title": "string", "type": "flowchart|timeline|comparison|hierarchy|cycle", "description": "string — what this diagram shows and why it helps", "nodes": [{"id": "string", "label": "string", "detail": "string — optional extra info"}], "edges": [{"from": "string", "to": "string", "label": "string — optional"}], "events": [{"date": "string", "title": "string", "detail": "string"}], "columns": ["string"], "rows": [[" string"]], "phases": [{"label": "string", "detail": "string"}]}],
-  "stepByStep": [{"title": "string", "context": "string", "steps": ["string"]}],
+
+  "plainEnglish": "5-7 flowing paragraphs. NO bullet points. Tell the STORY of this subject like a great professor. Open with the BIG PICTURE — why does this subject exist, what problem does it solve? Then build up the key ideas with vivid real-world analogies. Show how concepts connect and depend on each other. End with what this means for the exam. Write like you're at a coffee shop explaining to a brilliant friend who never took this class.",
+
+  "teacherNotes": ["4-6 strings. These are the professor insights that never appear in textbooks — the 'by the way' moments. Exam traps. Why the hardest part trips people up. Deep connections between concepts. The pattern examiners test most. Be brutally specific to THIS exact material."],
+
+  "coreConcepts": [{"term": "exact term from material", "explanation": "4-6 sentences. Explain the MECHANISM — how it actually works, not just what it is. Use a concrete analogy. Cover all edge cases.", "whyItMatters": "Why this concept is load-bearing for everything else in the subject", "commonMistake": "The exact wrong way students think about this — be specific", "example": "A vivid, concrete, real-world example with enough detail to be instructive"}],
+
+  "cheatSheet": ["15-22 items. Each one a SPECIFIC fact, rule, definition, date, name, or relationship directly from the material — not generic study advice. If materials were uploaded, extract exact content from them."],
+
+  "diagrams": [{"title": "string", "type": "flowchart|timeline|comparison|hierarchy|cycle", "description": "string", "nodes": [{"id": "string", "label": "string", "detail": "string"}], "edges": [{"from": "string", "to": "string", "label": "string"}], "events": [{"date": "string", "title": "string", "detail": "string"}], "columns": ["string"], "rows": [["string"]], "phases": [{"label": "string", "detail": "string"}]}],
+
+  "stepByStep": [{"title": "string", "context": "string — when to use this procedure", "steps": ["string — complete, specific step"]}],
+
   "codeExamples": [{"language": "string", "title": "string", "code": "string", "explanation": "string"}],
-  "formulas": [{"name": "string", "formula": "string", "whenToUse": "string", "variables": "string", "derivation": "string"}],
-  "workedExamples": [{"problem": "string", "approach": "string", "solution": "string", "keyInsight": "string"}],
-  "likelyQuestions": [{"question": "string", "answer": "string", "howToStructure": "string"}],
-  "misconceptions": [{"myth": "string", "reality": "string", "whyPeopleBelieveIt": "string"}],
-  "flashcards": [{"front": "string", "back": "string"}],
-  "summary": "string"
+
+  "formulas": [{"name": "string", "formula": "string", "whenToUse": "string — the exact situation", "variables": "string — what each variable means", "derivation": "string — intuition for why this formula works"}],
+
+  "workedExamples": [{"problem": "string — a realistic exam-style problem", "approach": "string — how to recognize what type of problem this is and what strategy to use", "solution": "string — complete step-by-step solution with every step shown and explained", "keyInsight": "string — the one thing that makes this problem click"}],
+
+  "likelyQuestions": [{"question": "string — exam-realistic question at ${courseLevel} level. Mix: 30% define/explain, 40% apply/analyze, 30% compare/evaluate/predict", "answer": "string — a model answer showing exactly the depth and structure an A-grade response requires. Write what a top student would write.", "howToStructure": "string — tactical advice: what to write first, key terms to include, common ways to lose marks"}],
+
+  "misconceptions": [{"myth": "string — a specific wrong belief students have, stated as they would say it", "reality": "string — the correct understanding, explained clearly", "whyPeopleBelieveIt": "string — the psychological reason this mistake is so common"}],
+
+  "flashcards": [{"front": "string — term, concept, or question — short and specific", "back": "string — precise answer or definition with a concrete example"}],
+
+  "mcqQuestions": [{"question": "string — a specific, application-level question. Not 'what is X' but 'in situation Y, what happens to X?'", "options": {"A": "string — plausible distractor", "B": "string — plausible distractor", "C": "string — correct answer (randomize which letter is correct)", "D": "string — plausible distractor"}, "correct": "C", "explanation": "string — explain why the correct answer is right. Then explain why each wrong option is wrong. Be specific."}],
+
+  "examStrategy": ["string — a specific, actionable exam tip for THIS exact subject and exam type. Not generic advice. Tell them exactly what to do: what to write first, what keywords to include, how to structure an answer, how to check their work, what examiners mark on."],
+
+  "mnemonics": [{"concept": "string — the exact term or concept to remember", "device": "string — the mnemonic: acronym, rhyme, story, visual hook, or analogy that makes it stick", "howToUse": "string — how to retrieve and deploy this during an exam"}],
+
+  "summary": "3-4 sentences. The absolute essence: if you only have 5 minutes before the exam, here is what you cannot afford to forget."
 }
 
-DIAGRAM FIELD RULES — use structured data for rich rendering:
-- "flowchart": nodes (id+label+detail) + edges (from+to+label). Use for processes, algorithms, cause-effect chains.
-- "timeline": events array (date+title+detail). Use for historical sequences, chronological processes.
-- "comparison": columns array + rows 2D array. Use for side-by-side comparisons.
-- "hierarchy": nodes array with parent relationships via edges. Use for taxonomies, org structures, nested concepts.
-- "cycle": phases array (label+detail). Use for circular/repeating processes (cell cycle, water cycle, etc.).
-Only populate the fields relevant to the diagram type; leave others empty.
+DIAGRAM RULES:
+- "flowchart": nodes (id+label+detail) + edges (from+to+label). For processes, algorithms, cause-effect.
+- "timeline": events (date+title+detail). For history, chronological sequences.
+- "comparison": columns + rows 2D array. For comparing 3+ items across attributes.
+- "hierarchy": nodes + edges with parent-child. For taxonomies, classifications.
+- "cycle": phases (label+detail). For repeating processes (cell cycle, business cycle, etc.).
 
-CONTENT TYPE RULES:
-FOR TECHNICAL: 4-6 workedExamples with full step-by-step. Populate stepByStep. Include codeExamples if CS/programming. Fewer diagrams.
-FOR CONCEPTUAL: Rich plainEnglish (5-6 paragraphs). 3-5 visual diagrams (flowchart/timeline/comparison). Deep coreConcepts. No formulas/code.
-FOR MIXED: balance all sections.
+CONTENT-TYPE OUTPUT RULES:
+TECHNICAL: 4-6 complete workedExamples with every step shown. Strong stepByStep. codeExamples if CS/programming. 8-12 mcqQuestions at application level. Mnemonics for formulas.
+CONCEPTUAL: Rich plainEnglish (6-7 paragraphs, vivid analogies). 3-5 diagrams (timeline/comparison/hierarchy). Deep coreConcepts. 10-12 mcqQuestions testing interpretation and application. Mnemonics for key terms and sequences.
+MIXED: Balance all sections. 8-10 mcqQuestions.
 
-QUALITY RULES:
-- Extract content DIRECTLY from uploaded materials when available
-- coreConcepts: 6-10 deep explanations — teach the mechanism, not just the definition
-- cheatSheet: specific facts from the ACTUAL subject, not generic study tips
-- likelyQuestions: 7-10 with thorough answers modeling how to write exam responses
-- misconceptions: 5-7 specific to this exact subject
-- Every answer should model the depth expected at ${courseLevel || 'undergraduate'} level`
+NON-NEGOTIABLE QUALITY STANDARDS:
+1. If materials were uploaded: every fact, definition, formula, and example MUST come from those materials. Do not invent content.
+2. coreConcepts: minimum 6, maximum 10. Teach the mechanism — HOW it works, not just WHAT it is.
+3. cheatSheet: minimum 15 SPECIFIC facts from the actual subject. Zero generic study tips.
+4. mcqQuestions: minimum 8, maximum 12. EXACTLY 30% recall / 40% application / 30% analysis. Each wrong option must be a plausible distractor — not obviously wrong.
+5. likelyQuestions: minimum 7, maximum 10. Model answers must show what a top-grade response looks like in full.
+6. examStrategy: minimum 4 tips, each specific to THIS subject. Zero generic tips like "read carefully."
+7. flashcards: minimum 10 cards. Front = specific term or question. Back = precise answer + example.
+8. Every single section must reference THIS specific topic — not a generic template.`
 
       const token = await getAuthToken()
       const res = await fetch('/api/groq', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.25, max_tokens: 6000 }),
+        body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.2, max_tokens: 8000 }),
       })
       setLoadingStep(2)
       if (res.status === 429) { const { error } = await res.json().catch(() => ({})); setStep('input'); alert(error || 'Daily AI limit reached. Resets at midnight.'); return }

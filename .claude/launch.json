@@ -1,1 +1,1 @@
-{"version":"0.0.1","configurations":[{"name":"clutch","runtimeExecutable":"npm","runtimeArgs":["run","dev"],"port":5173}]}
+version:0.0.1 configurations:[name:clutch-dev] configurations:[runtimeExecutable:npm] configurations:[runtimeArgs:[run] configurations:[dev]] configurations:[port:5173]

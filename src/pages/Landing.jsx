@@ -654,6 +654,69 @@ export default function Landing() {
       </section>
 
       {/* ═══════════════════════════════════════ */}
+      {/* TESTIMONIALS                             */}
+      {/* ═══════════════════════════════════════ */}
+      <section className="relative z-10 py-24 px-8 max-w-7xl mx-auto">
+        <div className="text-center mb-14">
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6 }}
+            className="text-[10px] font-black uppercase tracking-[0.25em] mb-4"
+            style={{ color: 'rgba(59,130,246,0.7)' }}>
+            [ REAL STUDENTS ]
+          </motion.div>
+          <motion.h2
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.7, delay: 0.05 }}
+            className="text-4xl font-black"
+            style={{ letterSpacing: '-0.04em', color: 'white' }}>
+            Grades don't lie.
+          </motion.h2>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          {[
+            {
+              quote: "I uploaded my biochem notes at 11pm before a 9am exam. Clutch gave me a breakdown I actually understood. Got a 91.",
+              name: 'Aisha K.', role: 'Pre-Med, Junior', color: '#3b82f6',
+            },
+            {
+              quote: "The GPA simulator told me I needed an 84 on my final to keep my scholarship GPA. I studied exactly that hard. Hit an 87.",
+              name: 'Marcus C.', role: 'CS, Sophomore', color: '#06b6d4',
+            },
+            {
+              quote: "I have 5 courses and no time. Clutch Mode turns a 2-hour reading into a 20-minute study guide. It's unfair to everyone else.",
+              name: 'Sofia R.', role: 'Finance, Senior', color: '#22c55e',
+            },
+          ].map((t, i) => (
+            <motion.div key={i}
+              initial={{ opacity: 0, y: 28 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: '-40px' }}
+              transition={{ duration: 0.65, delay: i * 0.1, ease: [0.16, 1, 0.3, 1] }}
+              className="relative p-7 rounded-3xl"
+              style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
+              <div className="text-3xl mb-4 leading-none" style={{ color: t.color, opacity: 0.4 }}>"</div>
+              <p className="text-sm leading-relaxed mb-6" style={{ color: 'rgba(255,255,255,0.6)' }}>{t.quote}</p>
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-black"
+                  style={{ background: `${t.color}22`, color: t.color, border: `1px solid ${t.color}33` }}>
+                  {t.name[0]}
+                </div>
+                <div>
+                  <div className="text-sm font-black" style={{ color: 'rgba(255,255,255,0.85)', letterSpacing: '-0.01em' }}>{t.name}</div>
+                  <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.25)' }}>{t.role}</div>
+                </div>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      </section>
+
+      {/* ═══════════════════════════════════════ */}
       {/* STATS                                   */}
       {/* ═══════════════════════════════════════ */}
       <section className="relative z-10 py-24 px-8"

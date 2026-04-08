@@ -796,6 +796,80 @@ export default function GPASimulator() {
           </AnimatePresence>
         </div>
 
+        {/* ── FINALS ALERT BANNER ── */}
+        {(() => {
+          const alerts = courses
+            .filter(c => !c.actualGrade)
+            .map(c => {
+              const targetEntry = GRADE_SCALE.find(g => g.label === (c.targetGrade || 'B+'))
+              const neededPct = targetEntry ? targetEntry.min : 83
+              const preWeight = 1 - (c.finalWeight / 100)
+              const raw = (neededPct - c.currentGrade * preWeight) / (c.finalWeight / 100)
+              if (raw <= 0) return { name: c.name || 'Course', score: 0, done: true, target: c.targetGrade || 'B+', weight: c.finalWeight }
+              if (raw > 100) return { name: c.name || 'Course', impossible: true, target: c.targetGrade || 'B+', weight: c.finalWeight }
+              return { name: c.name || 'Course', score: Math.ceil(raw), target: c.targetGrade || 'B+', weight: c.finalWeight }
+            })
+          const danger = alerts.filter(a => a.impossible || (a.score && a.score >= 80))
+          const ok = alerts.filter(a => !a.impossible && (a.done || (a.score && a.score < 80)))
+          if (alerts.length === 0) return null
+          return (
+            <div style={{ ...S.card, padding: '20px 18px', background: danger.length > 0 ? '#120d0d' : '#0d1810' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+                <div style={{
+                  fontSize: 9, fontWeight: 900, letterSpacing: '0.18em', textTransform: 'uppercase',
+                  color: danger.length > 0 ? '#ef4444' : '#22c55e',
+                  border: `1px solid ${danger.length > 0 ? '#ef444430' : '#22c55e30'}`,
+                  padding: '3px 8px', borderRadius: 4,
+                }}>
+                  {danger.length > 0 ? '⚠ FINALS ALERT' : '✓ FINALS STATUS'}
+                </div>
+                <div style={{ fontSize: 11, color: '#475569', fontWeight: 600 }}>
+                  What you need on each final
+                </div>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {alerts.map((a, i) => {
+                  const isHigh = !a.done && !a.impossible && a.score >= 90
+                  const isMed  = !a.done && !a.impossible && a.score >= 70 && a.score < 90
+                  const color  = a.impossible ? '#ef4444' : a.done ? '#22c55e' : isHigh ? '#f97316' : isMed ? '#f59e0b' : '#22c55e'
+                  return (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 4 }}>
+                          <span style={{ fontSize: 12, fontWeight: 800, color: '#cbd5e1', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '55%' }}>{a.name}</span>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: '#475569', flexShrink: 0 }}>
+                            for {a.target} · {a.weight}% of grade
+                          </span>
+                        </div>
+                        <div style={{ height: 5, background: '#1e2530', borderRadius: 99, overflow: 'hidden' }}>
+                          <motion.div
+                            animate={{ width: a.impossible ? '100%' : a.done ? '100%' : `${a.score}%` }}
+                            initial={{ width: 0 }}
+                            transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1], delay: i * 0.06 }}
+                            style={{ height: '100%', borderRadius: 99, background: color, boxShadow: `0 0 6px ${color}70` }}
+                          />
+                        </div>
+                      </div>
+                      <div style={{
+                        flexShrink: 0, minWidth: 64, textAlign: 'right',
+                        fontSize: a.impossible ? 12 : 22,
+                        fontWeight: 900, color, letterSpacing: '-0.03em', lineHeight: 1,
+                      }}>
+                        {a.impossible ? 'NOT POSSIBLE' : a.done ? 'DONE ✓' : `${a.score}%`}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+              {ok.length === alerts.length && (
+                <div style={{ marginTop: 12, fontSize: 11, color: '#22c55e', fontWeight: 700 }}>
+                  You're on track for all your target grades. Keep it up!
+                </div>
+              )}
+            </div>
+          )
+        })()}
+
         {/* ── COURSES TABLE ── */}
         <div>
           <div style={S.sectionLabel}>COURSES THIS SEMESTER</div>

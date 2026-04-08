@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
+import { getAuthToken } from '../lib/supabase'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const BLUE = '#3b82f6'
@@ -537,6 +538,173 @@ function FlashcardOverlay({ concepts, order, index, flipped, onFlip, onPrev, onN
   )
 }
 
+// ─── MCQQuizOverlay ───────────────────────────────────────────────────────────
+function MCQQuizOverlay({ questions, onClose }) {
+  const [index, setIndex] = useState(0)
+  const [selected, setSelected] = useState(null)
+  const [answers, setAnswers] = useState([])
+  const [finished, setFinished] = useState(false)
+  const [retryQueue, setRetryQueue] = useState(null) // null = full set, array = missed indices
+
+  const activeSet = retryQueue !== null ? retryQueue.map(i => questions[i]) : questions
+  const current = activeSet[index]
+  const total = activeSet.length
+  const score = answers.filter(a => a.wasCorrect).length
+
+  const handleSelect = (opt) => {
+    if (selected !== null || !current) return
+    setSelected(opt)
+    setAnswers(prev => [...prev, { selected: opt, correct: current.correct, wasCorrect: opt === current.correct, questionIndex: retryQueue !== null ? retryQueue[index] : index }])
+  }
+
+  const next = () => {
+    if (index + 1 >= total) { setFinished(true) } else { setIndex(i => i + 1); setSelected(null) }
+  }
+
+  const restart = () => { setIndex(0); setSelected(null); setAnswers([]); setFinished(false); setRetryQueue(null) }
+
+  const retryMissed = () => {
+    const missedIdx = answers.map((a, i) => (!a.wasCorrect ? (retryQueue !== null ? retryQueue[i] : i) : null)).filter(i => i !== null)
+    if (!missedIdx.length) return
+    setRetryQueue(missedIdx); setIndex(0); setSelected(null); setAnswers([]); setFinished(false)
+  }
+
+  const OPTS = ['A', 'B', 'C', 'D']
+  const PCT = Math.round((index / total) * 100)
+
+  if (!current) return null
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(4,6,10,0.97)', zIndex: 200, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px 20px', overflowY: 'auto' }}>
+      <div style={{ width: '100%', maxWidth: 640 }}>
+
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ fontSize: 9, fontWeight: 900, color: BLUE, letterSpacing: '0.22em', fontFamily: 'monospace', padding: '3px 9px', border: `1px solid ${BLUE}35`, borderRadius: 4, background: `${BLUE}09` }}>MCQ PRACTICE</div>
+            {retryQueue !== null && <div style={{ fontSize: 9, fontWeight: 900, color: AMBER, letterSpacing: '0.18em', fontFamily: 'monospace' }}>RETRY MODE</div>}
+          </div>
+          <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '7px 14px', color: 'rgba(255,255,255,0.45)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>✕ Close</button>
+        </div>
+
+        {!finished ? (
+          <>
+            {/* Progress */}
+            <div style={{ marginBottom: 24 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.4)' }}>{index + 1} <span style={{ color: 'rgba(255,255,255,0.2)' }}>/ {total}</span></span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: BLUE }}>{PCT}%</span>
+              </div>
+              <div style={{ height: 3, background: 'rgba(255,255,255,0.07)', borderRadius: 99 }}>
+                <motion.div animate={{ width: `${PCT}%` }} style={{ height: '100%', borderRadius: 99, background: `linear-gradient(90deg,${BLUE},${CYAN})` }} transition={{ duration: 0.4 }} />
+              </div>
+            </div>
+
+            {/* Question */}
+            <AnimatePresence mode="wait">
+              <motion.div key={`${index}-${retryQueue}`} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.28 }}>
+                <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 16, padding: '24px 24px', marginBottom: 16 }}>
+                  <p style={{ fontSize: 16, fontWeight: 700, color: 'white', lineHeight: 1.65, margin: 0 }}>{current.question}</p>
+                </div>
+
+                {/* Options */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
+                  {OPTS.map(opt => {
+                    const optText = current.options?.[opt]
+                    if (!optText) return null
+                    const isSelected = selected === opt
+                    const isCorrect = opt === current.correct
+                    const showResult = selected !== null
+                    let bg = 'rgba(255,255,255,0.03)', border = 'rgba(255,255,255,0.1)', color = 'rgba(255,255,255,0.75)'
+                    if (showResult && isCorrect) { bg = 'rgba(52,211,153,0.12)'; border = `${GREEN}50`; color = GREEN }
+                    else if (showResult && isSelected && !isCorrect) { bg = 'rgba(239,68,68,0.1)'; border = `${RED}45`; color = RED }
+                    else if (showResult) { color = 'rgba(255,255,255,0.25)' }
+                    return (
+                      <motion.button key={opt} whileHover={!selected ? { scale: 1.01 } : {}} whileTap={!selected ? { scale: 0.99 } : {}}
+                        onClick={() => handleSelect(opt)}
+                        style={{ display: 'flex', alignItems: 'flex-start', gap: 14, padding: '14px 18px', borderRadius: 12, background: bg, border: `1px solid ${border}`, cursor: selected ? 'default' : 'pointer', textAlign: 'left', transition: 'all 0.2s', width: '100%' }}>
+                        <span style={{ fontFamily: 'ui-monospace, monospace', fontSize: 11, fontWeight: 900, color: showResult && isCorrect ? GREEN : showResult && isSelected ? RED : BLUE, flexShrink: 0, marginTop: 1, minWidth: 18 }}>{opt}</span>
+                        <span style={{ fontSize: 14, color, lineHeight: 1.55, fontWeight: isSelected || (showResult && isCorrect) ? 700 : 400 }}>{optText}</span>
+                        {showResult && isCorrect && <span style={{ marginLeft: 'auto', fontSize: 16, flexShrink: 0 }}>✓</span>}
+                        {showResult && isSelected && !isCorrect && <span style={{ marginLeft: 'auto', fontSize: 16, flexShrink: 0 }}>✕</span>}
+                      </motion.button>
+                    )
+                  })}
+                </div>
+
+                {/* Explanation */}
+                <AnimatePresence>
+                  {selected && current.explanation && (
+                    <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} style={{ overflow: 'hidden', marginBottom: 16 }}>
+                      <div style={{ padding: '16px 18px', background: `${BLUE}08`, border: `1px solid ${BLUE}20`, borderRadius: 12 }}>
+                        <div style={{ fontSize: 9, fontWeight: 900, color: `${BLUE}70`, letterSpacing: '0.2em', fontFamily: 'monospace', marginBottom: 8 }}>EXPLANATION</div>
+                        <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.7)', lineHeight: 1.75, margin: 0 }}>{current.explanation}</p>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {selected && (
+                  <motion.button initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} onClick={next}
+                    style={{ width: '100%', padding: '14px', borderRadius: 12, fontSize: 13, fontWeight: 800, background: `linear-gradient(135deg,${BLUE},${CYAN})`, color: '#fff', border: 'none', cursor: 'pointer', boxShadow: `0 0 20px ${BLUE}30` }}>
+                    {index + 1 >= total ? 'See Results →' : 'Next Question →'}
+                  </motion.button>
+                )}
+              </motion.div>
+            </AnimatePresence>
+          </>
+        ) : (
+          /* ── RESULTS SCREEN ── */
+          <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.35 }}>
+            <div style={{ textAlign: 'center', marginBottom: 32 }}>
+              <div style={{ fontSize: 11, fontWeight: 900, color: 'rgba(255,255,255,0.3)', letterSpacing: '0.2em', marginBottom: 12 }}>QUIZ COMPLETE</div>
+              <div style={{ fontSize: 72, fontWeight: 900, letterSpacing: '-0.05em', color: score / total >= 0.8 ? GREEN : score / total >= 0.6 ? AMBER : RED, lineHeight: 1 }}>
+                {score}<span style={{ fontSize: 32, color: 'rgba(255,255,255,0.2)' }}>/{total}</span>
+              </div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: 'rgba(255,255,255,0.4)', marginTop: 6 }}>
+                {Math.round((score / total) * 100)}% — {score / total >= 0.9 ? 'Excellent' : score / total >= 0.75 ? 'Good Work' : score / total >= 0.6 ? 'Keep Studying' : 'Needs Review'}
+              </div>
+            </div>
+
+            {/* Per-question breakdown */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 24, maxHeight: 280, overflowY: 'auto' }}>
+              {answers.map((a, i) => {
+                const q = questions[a.questionIndex ?? i]
+                return (
+                  <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '10px 14px', borderRadius: 10, background: a.wasCorrect ? 'rgba(52,211,153,0.06)' : 'rgba(239,68,68,0.06)', border: `1px solid ${a.wasCorrect ? GREEN : RED}20` }}>
+                    <span style={{ fontSize: 14, flexShrink: 0, marginTop: 1 }}>{a.wasCorrect ? '✓' : '✕'}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)', lineHeight: 1.5, margin: 0, marginBottom: a.wasCorrect ? 0 : 4 }}>{q?.question?.slice(0, 100)}{q?.question?.length > 100 ? '…' : ''}</p>
+                      {!a.wasCorrect && <p style={{ fontSize: 11, color: GREEN, margin: 0, fontWeight: 700 }}>Correct: {a.correct} — {q?.options?.[a.correct]?.slice(0, 80)}</p>}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            <div style={{ display: 'flex', gap: 10 }}>
+              {answers.some(a => !a.wasCorrect) && (
+                <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }} onClick={retryMissed}
+                  style={{ flex: 1, padding: '13px', borderRadius: 12, fontSize: 13, fontWeight: 800, background: `${AMBER}15`, color: AMBER, border: `1px solid ${AMBER}35`, cursor: 'pointer' }}>
+                  Retry Missed ({answers.filter(a => !a.wasCorrect).length})
+                </motion.button>
+              )}
+              <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }} onClick={restart}
+                style={{ flex: 1, padding: '13px', borderRadius: 12, fontSize: 13, fontWeight: 800, background: `linear-gradient(135deg,${BLUE},${CYAN})`, color: '#fff', border: 'none', cursor: 'pointer' }}>
+                Restart Quiz
+              </motion.button>
+              <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }} onClick={onClose}
+                style={{ padding: '13px 20px', borderRadius: 12, fontSize: 13, fontWeight: 800, background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.08)', cursor: 'pointer' }}>
+                Close
+              </motion.button>
+            </div>
+          </motion.div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── Main ClutchResultView ────────────────────────────────────────────────────
 // Props:
 //   result        — the AI-generated result object
@@ -554,7 +722,13 @@ export default function ClutchResultView({ result, topic, courseName, uploadedFi
   const [flashcardActive, setFlashcardActive] = useState(false)
   const [flashcardIndex, setFlashcardIndex] = useState(0)
   const [flashcardFlipped, setFlashcardFlipped] = useState(false)
-  const [flashcardOrder, setFlashcardOrder] = useState(() => (result?.coreConcepts || []).map((_, i) => i))
+  const [mcqActive, setMcqActive] = useState(false)
+
+  // Flashcard deck: prefer dedicated flashcards, fall back to coreConcepts
+  const flashcardDeck = (result?.flashcards?.length > 0)
+    ? result.flashcards.map(f => ({ term: f.front, explanation: f.back, example: null }))
+    : (result?.coreConcepts || [])
+  const [flashcardOrder, setFlashcardOrder] = useState(() => flashcardDeck.map((_, i) => i))
 
   const startQuiz = () => { setQuizActive(true); setQuizIndex(0); setQuizAnswers([]); setShowQuizAnswer(false); setQuizFinished(false) }
   const answerQuiz = (grade) => {
@@ -563,7 +737,7 @@ export default function ClutchResultView({ result, topic, courseName, uploadedFi
     if (quizIndex + 1 >= (result?.likelyQuestions || []).length) setQuizFinished(true)
     else { setQuizIndex(quizIndex + 1); setShowQuizAnswer(false) }
   }
-  const openFlashcards = () => { setFlashcardActive(true); setFlashcardIndex(0); setFlashcardFlipped(false); setFlashcardOrder((result?.coreConcepts || []).map((_, i) => i)) }
+  const openFlashcards = () => { setFlashcardActive(true); setFlashcardIndex(0); setFlashcardFlipped(false); setFlashcardOrder(flashcardDeck.map((_, i) => i)) }
   const shuffleFlashcards = () => {
     const arr = [...flashcardOrder]
     for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1));[arr[i], arr[j]] = [arr[j], arr[i]] }
@@ -578,8 +752,12 @@ export default function ClutchResultView({ result, topic, courseName, uploadedFi
   return (
     <>
       {/* Flashcard overlay */}
-      {flashcardActive && result.coreConcepts?.length > 0 && (
-        <FlashcardOverlay concepts={result.coreConcepts} order={flashcardOrder} index={flashcardIndex} flipped={flashcardFlipped}
+      {mcqActive && result.mcqQuestions?.length > 0 && (
+        <MCQQuizOverlay questions={result.mcqQuestions} onClose={() => setMcqActive(false)} />
+      )}
+
+      {flashcardActive && flashcardDeck.length > 0 && (
+        <FlashcardOverlay concepts={flashcardDeck} order={flashcardOrder} index={flashcardIndex} flipped={flashcardFlipped}
           onFlip={() => setFlashcardFlipped(f => !f)}
           onPrev={() => { setFlashcardIndex(i => Math.max(0, i - 1)); setFlashcardFlipped(false) }}
           onNext={() => { setFlashcardIndex(i => Math.min(flashcardOrder.length - 1, i + 1)); setFlashcardFlipped(false) }}
@@ -614,8 +792,9 @@ export default function ClutchResultView({ result, topic, courseName, uploadedFi
             {[
               [result.coreConcepts?.length || 0, 'Concepts', BLUE],
               [result.cheatSheet?.length || 0, 'Key Facts', CYAN],
+              [result.mcqQuestions?.length || 0, 'MCQ Quiz', GREEN],
               [result.likelyQuestions?.length || 0, 'Exam Qs', RED],
-              [result.flashcards?.length || 0, 'Flashcards', VIOLET],
+              [flashcardDeck.length, 'Flashcards', VIOLET],
               ...(result.formulas?.length > 0 ? [[result.formulas.length, 'Formulas', AMBER]] : []),
               ...(result.diagrams?.length > 0 ? [[result.diagrams.length, 'Diagrams', CYAN]] : []),
               ...(result.stepByStep?.length > 0 ? [[result.stepByStep.length, 'Procedures', GREEN]] : []),
@@ -741,18 +920,95 @@ export default function ClutchResultView({ result, topic, courseName, uploadedFi
           </ScanSection>
         )}
 
-        {/* SCENE 07 · PREP */}
+        {/* SCENE 07 · MEMORY */}
+        {result.mnemonics?.length > 0 && (
+          <ScanSection scene="07 · MEMORY" title="Memory Hooks" accent={AMBER}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {result.mnemonics.map((m, i) => (
+                <motion.div key={i} initial={{ opacity: 0, y: 10 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.07, ease }}
+                  style={{ borderRadius: 14, overflow: 'hidden', border: `1px solid ${AMBER}20` }}>
+                  <div style={{ background: `${AMBER}09`, borderBottom: `1px solid ${AMBER}14`, padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span style={{ fontSize: 13 }}>🧠</span>
+                    <span style={{ fontSize: 11, fontWeight: 800, color: 'white' }}>{m.concept}</span>
+                  </div>
+                  <div style={{ padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <div style={{ padding: '12px 14px', background: `${AMBER}08`, border: `1px solid ${AMBER}18`, borderRadius: 10 }}>
+                      <div style={{ fontSize: 9, fontWeight: 900, color: `${AMBER}70`, letterSpacing: '0.2em', fontFamily: 'monospace', marginBottom: 6 }}>THE HOOK</div>
+                      <p style={{ fontSize: 14, fontWeight: 800, color: AMBER, lineHeight: 1.5, margin: 0 }}>{m.device || m.mnemonic}</p>
+                    </div>
+                    {(m.howToUse || m.how) && (
+                      <div style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.03)', borderRadius: 8 }}>
+                        <div style={{ fontSize: 9, fontWeight: 900, color: 'rgba(255,255,255,0.3)', letterSpacing: '0.18em', fontFamily: 'monospace', marginBottom: 5 }}>HOW TO USE IN THE EXAM</div>
+                        <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', lineHeight: 1.65, margin: 0 }}>{m.howToUse || m.how}</p>
+                      </div>
+                    )}
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          </ScanSection>
+        )}
+
+        {/* SCENE 08 · PREP */}
         {result.likelyQuestions?.length > 0 && (
-          <ScanSection scene="07 · PREP" title="Likely Exam Questions" accent={RED}>
+          <ScanSection scene="08 · PREP" title="Likely Exam Questions" accent={RED}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {result.likelyQuestions.map((q, i) => <ExamQuestionCard key={i} question={q} index={i} />)}
             </div>
           </ScanSection>
         )}
 
-        {/* SCENE 08 · TEST */}
+        {/* SCENE 09 · STRATEGY */}
+        {result.examStrategy?.length > 0 && (
+          <ScanSection scene="09 · STRATEGY" title="Exam Strategy" accent={CYAN}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {result.examStrategy.map((tip, i) => (
+                <motion.div key={i} initial={{ opacity: 0, x: -14 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.07, ease }}
+                  style={{ display: 'flex', gap: 14, padding: '16px 18px', background: `${CYAN}06`, border: `1px solid ${CYAN}18`, borderLeft: `3px solid ${CYAN}`, borderRadius: 12 }}>
+                  <div style={{ flexShrink: 0, width: 24, height: 24, borderRadius: '50%', background: `${CYAN}18`, border: `1px solid ${CYAN}35`, display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 1 }}>
+                    <span style={{ fontSize: 10, fontWeight: 900, color: CYAN, fontFamily: 'monospace' }}>{i + 1}</span>
+                  </div>
+                  <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.78)', lineHeight: 1.75, margin: 0 }}>{tip}</p>
+                </motion.div>
+              ))}
+            </div>
+          </ScanSection>
+        )}
+
+        {/* SCENE 10 · MCQ PRACTICE */}
+        {result.mcqQuestions?.length > 0 && (
+          <ScanSection scene="10 · PRACTICE" title="Multiple Choice Quiz" accent={GREEN}>
+            <div style={{ background: `${GREEN}06`, border: `1px solid ${GREEN}20`, borderRadius: 16, padding: '28px', textAlign: 'center' }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 16, marginBottom: 20 }}>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 28, fontWeight: 900, color: GREEN, letterSpacing: '-0.04em', lineHeight: 1 }}>{result.mcqQuestions.length}</div>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.3)', letterSpacing: '0.1em', marginTop: 2 }}>QUESTIONS</div>
+                </div>
+                <div style={{ width: 1, background: 'rgba(255,255,255,0.08)' }} />
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 28, fontWeight: 900, color: CYAN, letterSpacing: '-0.04em', lineHeight: 1 }}>A–D</div>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.3)', letterSpacing: '0.1em', marginTop: 2 }}>OPTIONS</div>
+                </div>
+                <div style={{ width: 1, background: 'rgba(255,255,255,0.08)' }} />
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 28, fontWeight: 900, color: AMBER, letterSpacing: '-0.04em', lineHeight: 1 }}>+EXP</div>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.3)', letterSpacing: '0.1em', marginTop: 2 }}>EXPLANATIONS</div>
+                </div>
+              </div>
+              <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.3)', marginBottom: 20 }}>
+                Recall · Application · Analysis — instant feedback on every answer
+              </p>
+              <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }} onClick={() => setMcqActive(true)}
+                style={{ padding: '14px 40px', borderRadius: 12, fontSize: 14, fontWeight: 800, background: `linear-gradient(135deg,${GREEN},#16a34a)`, color: '#fff', border: 'none', cursor: 'pointer', boxShadow: `0 0 28px ${GREEN}30`, letterSpacing: '0.02em' }}>
+                Start Practice Quiz →
+              </motion.button>
+            </div>
+          </ScanSection>
+        )}
+
+        {/* SCENE 11 · TEST */}
         {result.likelyQuestions?.length > 0 && (
-          <ScanSection scene="08 · TEST" title="Quiz Yourself" accent={BLUE}>
+          <ScanSection scene="11 · TEST" title="Quiz Yourself" accent={BLUE}>
             <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 16, padding: '24px' }}>
               {!quizActive && !quizFinished && (
                 <div style={{ textAlign: 'center', padding: '16px 0' }}>
@@ -818,9 +1074,9 @@ export default function ClutchResultView({ result, topic, courseName, uploadedFi
           </ScanSection>
         )}
 
-        {/* SCENE 09 · TRAPS */}
+        {/* SCENE 12 · TRAPS */}
         {misconceptionsList.length > 0 && (
-          <ScanSection scene="09 · TRAPS" title="Misconceptions" accent={RED}>
+          <ScanSection scene="12 · TRAPS" title="Misconceptions" accent={RED}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {misconceptionsList.map((m, i) => {
                 const isMR = m && typeof m === 'object' && m.myth
@@ -857,12 +1113,12 @@ export default function ClutchResultView({ result, topic, courseName, uploadedFi
           </ScanSection>
         )}
 
-        {/* SCENE 10 · DRILL */}
-        {result.coreConcepts?.length > 0 && (
-          <ScanSection scene="10 · DRILL" title="Flashcards" accent={VIOLET}>
+        {/* SCENE 13 · DRILL */}
+        {flashcardDeck.length > 0 && (
+          <ScanSection scene="13 · DRILL" title="Flashcards" accent={VIOLET}>
             <div style={{ background: `${VIOLET}06`, border: `1px solid ${VIOLET}20`, borderRadius: 16, padding: '28px', textAlign: 'center' }}>
               <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.35)', marginBottom: 20 }}>
-                {result.coreConcepts.length} cards · Term → Explanation → Example · Tap to flip
+                {flashcardDeck.length} cards · Term → Definition · Tap to flip · Shuffle to randomize
               </div>
               <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }} onClick={openFlashcards}
                 style={{ padding: '12px 32px', borderRadius: 12, fontSize: 13, fontWeight: 800, background: `linear-gradient(135deg,#7c3aed,${BLUE})`, color: '#fff', border: 'none', cursor: 'pointer', boxShadow: '0 0 24px rgba(124,58,237,0.3)' }}>
@@ -946,11 +1202,18 @@ function ClutchChat({ result, topic, courseName }) {
         temperature: 0.4,
         max_tokens: 1200,
       }
+      const token = await getAuthToken()
       const res = await fetch('/api/groq', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify(payload),
       })
+      if (res.status === 429) {
+        const err = await res.json().catch(() => ({}))
+        setMessages(prev => [...prev, { role: 'assistant', content: err.error || "You've hit your daily AI limit. It resets at midnight!" }])
+        setTyping(false)
+        return
+      }
       if (!res.ok) throw new Error('API error')
       const data = await res.json()
       const reply = data.choices?.[0]?.message?.content || "I'm having trouble responding right now. Try again."

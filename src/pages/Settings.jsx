@@ -53,12 +53,29 @@ export default function Settings() {
   const [accentColor, setAccentColor] = useState(
     () => localStorage.getItem('clutch-accent') || '#3b82f6'
   )
+  const [semesterName, setSemesterName] = useState(
+    () => localStorage.getItem('clutch-semester') || (() => {
+      const m = new Date().getMonth(), y = new Date().getFullYear()
+      if (m >= 8) return `Fall ${y}`
+      if (m >= 5) return `Summer ${y}`
+      return `Spring ${y}`
+    })()
+  )
+  const [studyGoal, setStudyGoal] = useState(
+    () => parseInt(localStorage.getItem('clutch-study-goal') || '10')
+  )
+  const [notifyDeadlines, setNotifyDeadlines] = useState(
+    () => localStorage.getItem('clutch-notify-deadlines') !== 'false'
+  )
   const [saved, setSaved] = useState(false)
   const [clearConfirm, setClearConfirm] = useState(false)
 
   const handleSave = () => {
     localStorage.setItem('clutch-display-name', displayName)
     localStorage.setItem('clutch-accent', accentColor)
+    localStorage.setItem('clutch-semester', semesterName)
+    localStorage.setItem('clutch-study-goal', String(studyGoal))
+    localStorage.setItem('clutch-notify-deadlines', String(notifyDeadlines))
     setSaved(true)
     setTimeout(() => setSaved(false), 2200)
   }
@@ -100,7 +117,7 @@ export default function Settings() {
     <div style={{ minHeight: '100vh', padding: '0 0 100px 0' }}>
 
       {/* ── HERO ── */}
-      <div style={{ padding: '48px 48px 40px', position: 'relative' }}>
+      <div style={{ padding: 'clamp(24px, 5vw, 48px) clamp(20px, 5vw, 48px) 40px', position: 'relative' }}>
         <div style={{
           position: 'absolute', top: 0, left: 0, right: 0, height: 220,
           background: 'radial-gradient(ellipse at 20% 0%, rgba(59,130,246,0.07) 0%, transparent 60%)',
@@ -128,7 +145,7 @@ export default function Settings() {
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, delay: 0.15, ease }}
-        style={{ padding: '0 48px', maxWidth: 680 }}>
+        style={{ padding: '0 clamp(20px, 5vw, 48px)', maxWidth: 680 }}>
 
         {/* ── ACCOUNT ── */}
         <SectionLabel>Account</SectionLabel>
@@ -212,6 +229,74 @@ export default function Settings() {
           <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)', marginTop: 14 }}>
             Accent color is saved as your preference. Some UI elements use the selected color.
           </p>
+        </SettingsCard>
+
+        {/* ── SEMESTER ── */}
+        <SectionLabel>Semester</SectionLabel>
+        <SettingsCard>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            {/* Semester name */}
+            <div>
+              <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.28)', marginBottom: 8 }}>
+                Current Semester
+              </div>
+              <input
+                value={semesterName}
+                onChange={e => setSemesterName(e.target.value)}
+                placeholder="e.g. Spring 2026"
+                style={{
+                  width: '100%', background: 'rgba(255,255,255,0.04)',
+                  border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10,
+                  color: 'white', padding: '11px 14px', fontSize: 13,
+                  fontWeight: 500, outline: 'none', boxSizing: 'border-box',
+                }}
+                onFocus={e => { e.target.style.borderColor = `${accentColor}60` }}
+                onBlur={e => { e.target.style.borderColor = 'rgba(255,255,255,0.08)' }}
+              />
+            </div>
+
+            {/* Study goal */}
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.28)' }}>
+                  Weekly Study Goal
+                </div>
+                <div style={{ fontSize: 14, fontWeight: 900, color: accentColor }}>{studyGoal}h / week</div>
+              </div>
+              <input
+                type="range" min={1} max={40} step={1} value={studyGoal}
+                onChange={e => setStudyGoal(parseInt(e.target.value))}
+                style={{ width: '100%', accentColor }}
+              />
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
+                {['1h', '10h', '20h', '30h', '40h'].map(v => (
+                  <span key={v} style={{ fontSize: 9, fontWeight: 700, color: 'rgba(255,255,255,0.2)' }}>{v}</span>
+                ))}
+              </div>
+            </div>
+
+            {/* Deadline reminders toggle */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: 'white', marginBottom: 2 }}>Deadline Reminders</div>
+                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>Show urgency warnings in the dashboard</div>
+              </div>
+              <motion.button
+                whileTap={{ scale: 0.93 }}
+                onClick={() => setNotifyDeadlines(v => !v)}
+                style={{
+                  width: 48, height: 26, borderRadius: 99, border: 'none',
+                  background: notifyDeadlines ? accentColor : 'rgba(255,255,255,0.1)',
+                  position: 'relative', cursor: 'none', transition: 'background 0.2s', flexShrink: 0,
+                }}>
+                <motion.div
+                  animate={{ x: notifyDeadlines ? 24 : 2 }}
+                  transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                  style={{ position: 'absolute', top: 3, width: 20, height: 20, borderRadius: '50%', background: 'white' }}
+                />
+              </motion.button>
+            </div>
+          </div>
         </SettingsCard>
 
         {/* ── DATA MANAGEMENT ── */}

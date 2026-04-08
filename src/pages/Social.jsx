@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { useAuth } from '../context/AuthContext'
 import { useSessions } from '../context/SessionsContext'
+import { supabase } from '../lib/supabase'
 
 // ── Demo data ──────────────────────────────────────────────────────────────────
 const DEMO_STUDENTS = [
@@ -90,6 +91,17 @@ export default function Social() {
   const [expandedRow, setExpandedRow] = useState(null)
   const tickRef = useRef(null)
   const [liveMins, setLiveMins] = useState(LIVE_NOW.map(u => u.mins))
+  const [realData, setRealData] = useState(null)
+
+  // Fetch real leaderboard from Supabase RPC
+  useEffect(() => {
+    if (!supabase) return
+    supabase.rpc('get_leaderboard').then(({ data, error }) => {
+      if (!error && Array.isArray(data) && data.length > 0) {
+        setRealData(data)
+      }
+    })
+  }, [])
 
   // Live "studying" timer tick
   useEffect(() => {
@@ -106,16 +118,31 @@ export default function Social() {
   const userInitials = (userName[0] || 'Y').toUpperCase() + (userName[1] || '').toUpperCase()
   const userBadges = sessionCount >= 10 ? ['clutch'] : []
 
-  // Insert user into leaderboard at correct position
+  // Build leaderboard from real or demo data
+  const BASE_STUDENTS = realData
+    ? realData.map((r, i) => ({
+        id: i + 1,
+        name: r.display_name,
+        initials: r.initials,
+        major: '',
+        hours: Math.round((r.session_count || 0) * 1.4 * 10) / 10,
+        streak: Math.min(Math.floor((r.session_count || 0) / 3), 30),
+        sessions: Number(r.session_count || 0),
+        delta: 0,
+        color: r.color || '#3b82f6',
+        badges: (r.session_count || 0) >= 10 ? ['clutch'] : [],
+      }))
+    : DEMO_STUDENTS
+
   const score = s => s.hours * 2 + s.streak * 1.5 + s.sessions * 0.5
   const userScore = score({ hours: userHours, streak: userStreak, sessions: sessionCount })
-  const rankPos = DEMO_STUDENTS.filter(s => score(s) > userScore).length
+  const rankPos = BASE_STUDENTS.filter(s => score(s) > userScore).length
   const ME = {
     id: 'me', name: userName, initials: userInitials, major: 'Your Major',
     hours: userHours, streak: userStreak, sessions: sessionCount, delta: 0,
     color: '#3b82f6', badges: userBadges, isMe: true,
   }
-  const leaderboard = [...DEMO_STUDENTS.slice(0, rankPos), ME, ...DEMO_STUDENTS.slice(rankPos)]
+  const leaderboard = [...BASE_STUDENTS.slice(0, rankPos), ME, ...BASE_STUDENTS.slice(rankPos)]
   const myRank = leaderboard.findIndex(s => s.isMe) + 1
   const maxHours = Math.max(...leaderboard.map(s => s.hours), 1)
 
@@ -172,7 +199,7 @@ export default function Social() {
       `}</style>
 
       {/* ── HERO ───────────────────────────────────────────────────────────── */}
-      <section style={{ padding: '60px 48px 0', position: 'relative', overflow: 'hidden' }}>
+      <section style={{ padding: 'clamp(32px, 6vw, 60px) clamp(20px, 5vw, 48px) 0', position: 'relative', overflow: 'hidden' }}>
         {/* Ambient background */}
         <div style={{
           position: 'absolute', top: -100, right: -100, width: 600, height: 500,
@@ -309,7 +336,7 @@ export default function Social() {
             display: 'grid',
             gridTemplateColumns: '64px 48px 1fr 160px 80px 80px 60px',
             alignItems: 'center', gap: 16,
-            padding: '16px 48px',
+            padding: '16px clamp(20px, 5vw, 48px)',
             borderBottom: '1px solid rgba(255,255,255,0.05)',
           }}>
             {['RANK','','STUDENT','HOURS / WEEK','STREAK','SESSIONS',''].map((h, i) => (
@@ -339,7 +366,7 @@ export default function Social() {
                   display: 'grid',
                   gridTemplateColumns: '64px 48px 1fr 160px 80px 80px 60px',
                   alignItems: 'center', gap: 16,
-                  padding: '20px 48px',
+                  padding: '20px clamp(20px, 5vw, 48px)',
                   borderBottom: '1px solid rgba(255,255,255,0.04)',
                   borderLeft: isMe ? '2px solid #3b82f6' : hoveredRow === student.id ? '2px solid rgba(255,255,255,0.1)' : '2px solid transparent',
                   background: isMe
