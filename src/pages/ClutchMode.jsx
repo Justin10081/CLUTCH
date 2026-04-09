@@ -170,7 +170,7 @@ function LoadingRing({ size, color, duration, reverse = false, offset = 0 }) {
 // ─── Main Component ────────────────────────────────────────────────────────────
 export default function ClutchMode() {
   const location = useLocation()
-  const { courses } = useCourses()
+  const { courses, addMaterial } = useCourses()
   const { sessions, addSession } = useSessions()
   const preload = location.state || {}
 
@@ -244,8 +244,20 @@ export default function ClutchMode() {
   }, [])
 
   useEffect(() => {
-    if (selectedCourse?.materials?.length > 0) {
-      const courseFiles = selectedCourse.materials.map(m => ({ id: m.id, name: m.name, content: m.content || '', type: m.type || 'text/plain', fromCourse: true }))
+    if (!selectedCourse) {
+      setUploadedFiles(prev => prev.filter(f => !f.fromCourse))
+      return
+    }
+    const allMaterials = selectedCourse.materials || []
+    const selectedIds = preload.selectedMaterialIds
+    const materialsToLoad = selectedIds?.length > 0
+      ? allMaterials.filter(m => selectedIds.includes(m.id))
+      : allMaterials
+    if (materialsToLoad.length > 0) {
+      const courseFiles = materialsToLoad.map(m => ({
+        id: m.id, name: m.name, content: m.content || '',
+        type: m.type || 'text/plain', fromCourse: true,
+      }))
       setUploadedFiles(prev => [...courseFiles, ...prev.filter(f => !f.fromCourse)])
     } else {
       setUploadedFiles(prev => prev.filter(f => !f.fromCourse))
@@ -508,6 +520,21 @@ NON-NEGOTIABLE STANDARDS — every output must meet these or it fails:
         filesUsed: uploadedFiles.map(f => f.name),
         courseName: courseName || effectiveTopic,
       })
+    }
+
+    // Persist newly uploaded files into the course's saved materials
+    if (courseId && addMaterial) {
+      const existingNames = new Set((selectedCourse?.materials || []).map(m => m.name))
+      for (const f of uploadedFiles) {
+        if (!f.fromCourse && !f.needsPaste && (f.content || '').length > 100 && !existingNames.has(f.name)) {
+          addMaterial(courseId, {
+            name: f.name,
+            content: (f.content || '').slice(0, 40000),
+            type: f.type || 'text/plain',
+            size: f.size || 0,
+          })
+        }
+      }
     }
 
     addSession({ courseId, courseName, topic: effectiveTopic, filesUsed: uploadedFiles.map(f => f.name), result: data })

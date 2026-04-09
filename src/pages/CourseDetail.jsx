@@ -188,6 +188,9 @@ export default function CourseDetail() {
   const [editingField, setEditingField] = useState(null)
   const [editValue, setEditValue] = useState('')
   const [dragOver, setDragOver] = useState(false)
+  const [selectedMaterials, setSelectedMaterials] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(`clutch-sel-${id}`) || '[]') } catch { return [] }
+  })
   const [parseStep, setParseStep] = useState(-1) // -1=idle, 0-3=steps, 4=done, 5=error
   const [parseMsg, setParseMsg] = useState('')
   const [parseSuccess, setParseSuccess] = useState(null)
@@ -252,19 +255,27 @@ export default function CourseDetail() {
   }
 
   // ── File uploads
-  const handleMaterialUpload = (files) => {
-    Array.from(files).forEach(file => {
-      const reader = new FileReader()
-      reader.onload = (ev) => {
-        // Cap stored content at 6KB to keep localStorage fast
-        const content = typeof ev.target.result === 'string'
-          ? ev.target.result.slice(0, 6000)
-          : ''
-        addMaterial(id, { name: file.name, type: file.type, size: file.size, content })
+  const handleMaterialUpload = async (files) => {
+    for (const file of Array.from(files)) {
+      try {
+        const text = await extractTextFromFile(file)
+        addMaterial(id, { name: file.name, type: file.type, size: file.size, content: (text || '').slice(0, 40000) })
+      } catch {
+        addMaterial(id, { name: file.name, type: file.type, size: file.size, content: '' })
       }
-      reader.readAsText(file)
-    })
+    }
   }
+
+  // Persist material selection to localStorage
+  useEffect(() => {
+    try { localStorage.setItem(`clutch-sel-${id}`, JSON.stringify(selectedMaterials)) } catch {}
+  }, [selectedMaterials, id])
+
+  const toggleMaterialSelect = (mId) => setSelectedMaterials(prev =>
+    prev.includes(mId) ? prev.filter(x => x !== mId) : [...prev, mId]
+  )
+  const selectAllMaterials = () => setSelectedMaterials((course?.materials || []).map(m => m.id))
+  const clearMaterialSelection = () => setSelectedMaterials([])
 
   // ── Syllabus parse
   const handleSyllabusFile = async (file) => {
@@ -825,52 +836,123 @@ export default function CourseDetail() {
           {/* ════════════════ MATERIALS ════════════════ */}
           {activeTab === 4 && (
             <motion.div key="materials" variants={stagger} initial="initial" animate="animate" exit="exit" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <input type="file" ref={fileInputRef} multiple accept=".txt,.md,.pdf,.pptx,.docx,.csv" style={{ display: 'none' }} onChange={e => { handleMaterialUpload(e.target.files || []); e.target.value = '' }} />
+              <style>{`
+                .mat-row:hover { background: rgba(255,255,255,0.04) !important; }
+                .mat-row:hover .mat-del { opacity: 1 !important; }
+                .mat-check { width: 18px; height: 18px; border-radius: 5px; border: 1.5px solid rgba(255,255,255,0.18); background: transparent; flex-shrink: 0; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.15s; }
+                .mat-check.checked { border-color: ${course.color}; background: ${course.color}22; }
+              `}</style>
 
+              <input type="file" ref={fileInputRef} multiple accept=".txt,.md,.pdf,.pptx,.docx,.csv,.jpg,.jpeg,.png,.webp" style={{ display: 'none' }} onChange={e => { handleMaterialUpload(e.target.files || []); e.target.value = '' }} />
+
+              {/* Upload drop zone */}
               <motion.div variants={fadeUp}
                 onDragOver={e => { e.preventDefault(); setDragOver(true) }}
                 onDragLeave={() => setDragOver(false)}
                 onDrop={e => { e.preventDefault(); setDragOver(false); handleMaterialUpload(e.dataTransfer.files) }}
                 onClick={() => fileInputRef.current?.click()}
                 animate={{ borderColor: dragOver ? `${course.color}66` : 'rgba(255,255,255,0.1)', background: dragOver ? `${course.color}07` : 'rgba(255,255,255,0.015)' }}
-                style={{ padding: '40px 24px', borderRadius: 14, border: '1px dashed rgba(255,255,255,0.1)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, transition: 'background 0.2s' }}>
-                <motion.div animate={{ scale: dragOver ? 1.1 : 1 }} style={{ width: 50, height: 50, borderRadius: 14, background: `linear-gradient(135deg, ${course.color}22, ${course.color}0a)`, border: `1px solid ${course.color}33`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <svg width="22" height="22" style={{ color: course.color }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                style={{ padding: '32px 24px', borderRadius: 14, border: '1px dashed rgba(255,255,255,0.1)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, transition: 'background 0.2s', cursor: 'pointer' }}>
+                <motion.div animate={{ scale: dragOver ? 1.1 : 1 }} style={{ width: 44, height: 44, borderRadius: 12, background: `linear-gradient(135deg, ${course.color}22, ${course.color}0a)`, border: `1px solid ${course.color}33`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <svg width="20" height="20" style={{ color: course.color }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
                   </svg>
                 </motion.div>
                 <div style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: 14, fontWeight: 800, color: 'rgba(255,255,255,0.7)', marginBottom: 4 }}>Upload lecture notes, slides, PDFs</div>
-                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)' }}>Drag & drop or click · Clutch Mode uses these</div>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: 'rgba(255,255,255,0.65)', marginBottom: 3 }}>Upload lecture notes, slides, or PDFs</div>
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.22)' }}>Files saved here are available in CLUTCH Mode · PDF text is extracted automatically</div>
                 </div>
               </motion.div>
 
-              <motion.div variants={fadeUp} style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {['.TXT', '.MD', '.PDF', '.PPTX', '.DOCX', '.CSV'].map(fmt => (
-                  <span key={fmt} style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.1em', padding: '3px 9px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 999, color: 'rgba(255,255,255,0.22)' }}>{fmt}</span>
+              <motion.div variants={fadeUp} style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                {['.PDF', '.TXT', '.MD', '.PPTX', '.DOCX', '.CSV', '.PNG', '.JPG'].map(fmt => (
+                  <span key={fmt} style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.1em', padding: '3px 8px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 999, color: 'rgba(255,255,255,0.22)' }}>{fmt}</span>
                 ))}
               </motion.div>
 
+              {/* Selection controls + CLUTCH CTA */}
+              {(course.materials || []).length > 0 && (
+                <motion.div variants={fadeUp} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.2em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.22)' }}>
+                      {selectedMaterials.length}/{(course.materials || []).length} selected
+                    </span>
+                    <button onClick={selectedMaterials.length === (course.materials || []).length ? clearMaterialSelection : selectAllMaterials}
+                      style={{ fontSize: 10, fontWeight: 700, color: course.color, background: `${course.color}12`, border: `1px solid ${course.color}28`, borderRadius: 6, padding: '4px 10px', cursor: 'pointer' }}>
+                      {selectedMaterials.length === (course.materials || []).length ? 'Deselect all' : 'Select all'}
+                    </button>
+                  </div>
+                  <motion.button
+                    whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+                    onClick={() => navigate('/clutch', { state: { courseId: id, courseName: course.name, courseCode: course.code, courseColor: course.color, selectedMaterialIds: selectedMaterials.length > 0 ? selectedMaterials : undefined } })}
+                    style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 16px', background: selectedMaterials.length > 0 ? `linear-gradient(135deg, ${course.color}, ${course.color}bb)` : 'rgba(255,255,255,0.05)', border: selectedMaterials.length > 0 ? 'none' : '1px solid rgba(255,255,255,0.08)', borderRadius: 9, color: selectedMaterials.length > 0 ? 'white' : 'rgba(255,255,255,0.3)', fontSize: 11, fontWeight: 900, letterSpacing: '0.08em', textTransform: 'uppercase', cursor: 'pointer', transition: 'all 0.2s', boxShadow: selectedMaterials.length > 0 ? `0 0 20px ${course.color}40` : 'none' }}>
+                    <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                    {selectedMaterials.length > 0 ? `Study ${selectedMaterials.length} file${selectedMaterials.length > 1 ? 's' : ''} with CLUTCH` : 'Study all with CLUTCH'}
+                  </motion.button>
+                </motion.div>
+              )}
+
+              {/* Materials list */}
               <AnimatePresence>
-                {[...(course.syllabus ? [{ id: '__syllabus__', name: course.syllabusName || 'Syllabus', type: 'text', size: 0, isSyllabus: true }] : []), ...(course.materials || [])].map(m => (
-                  <motion.div key={m.id} initial={{ opacity: 0, y: 12, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, scale: 0.96 }} whileHover={{ x: 3 }} transition={{ duration: 0.25, ease }}
-                    className="cd-item"
-                    style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 18px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 11, transition: 'background 0.15s' }}>
-                    <span style={{ fontSize: 20, flexShrink: 0 }}>{m.isSyllabus ? '📋' : fileIcon(m.type)}</span>
+                {course.syllabus && (
+                  <motion.div key="__syllabus__" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.25, ease }}
+                    className="mat-row"
+                    style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '12px 16px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 11, transition: 'background 0.15s' }}>
+                    <span style={{ fontSize: 18, flexShrink: 0 }}>📋</span>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 800, color: 'rgba(255,255,255,0.8)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.name}</div>
-                      <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.28)', marginTop: 2 }}>
-                        {m.isSyllabus ? 'Syllabus' : `${fmtSize(m.size)} · ${m.uploadedAt ? new Date(m.uploadedAt).toLocaleDateString() : ''}`}
-                      </div>
+                      <div style={{ fontSize: 13, fontWeight: 800, color: 'rgba(255,255,255,0.8)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{course.syllabusName || 'Syllabus'}</div>
+                      <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.28)', marginTop: 2 }}>Syllabus · always included in CLUTCH</div>
                     </div>
-                    {!m.isSyllabus && (
-                      <button className="cd-remove" onClick={() => removeMaterial(id, m.id)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.2)', padding: '4px 6px', borderRadius: 6, display: 'flex', alignItems: 'center', transition: 'color 0.2s' }}>
-                        <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-                      </button>
-                    )}
+                    <span style={{ fontSize: 9, fontWeight: 700, color: '#34d399', background: 'rgba(52,211,153,0.1)', border: '1px solid rgba(52,211,153,0.2)', padding: '2px 7px', borderRadius: 5 }}>AUTO</span>
                   </motion.div>
-                ))}
+                )}
+
+                {(course.materials || []).map((m) => {
+                  const isSelected = selectedMaterials.includes(m.id)
+                  const charCount = (m.content || '').length
+                  const hasContent = charCount >= 200
+                  const badgeColor = hasContent ? '#34d399' : charCount > 0 ? '#fbbf24' : '#f87171'
+                  const badgeLabel = charCount === 0 ? 'No text' : charCount < 200 ? `${charCount}c` : charCount >= 1000 ? `${Math.round(charCount / 1000)}k` : `${charCount}c`
+                  return (
+                    <motion.div key={m.id} initial={{ opacity: 0, y: 10, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, scale: 0.96 }}
+                      transition={{ duration: 0.25, ease }}
+                      className="mat-row"
+                      onClick={() => toggleMaterialSelect(m.id)}
+                      style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: isSelected ? `${course.color}08` : 'rgba(255,255,255,0.02)', border: `1px solid ${isSelected ? course.color + '33' : 'rgba(255,255,255,0.07)'}`, borderRadius: 11, transition: 'all 0.15s', cursor: 'pointer' }}>
+                      {/* Checkbox */}
+                      <div className={`mat-check${isSelected ? ' checked' : ''}`} style={{ borderColor: isSelected ? course.color : undefined, background: isSelected ? `${course.color}22` : undefined }}>
+                        {isSelected && (
+                          <svg width="10" height="10" fill="none" viewBox="0 0 24 24" stroke={course.color} strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                        )}
+                      </div>
+                      <span style={{ fontSize: 18, flexShrink: 0 }}>{fileIcon(m.type)}</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 800, color: 'rgba(255,255,255,0.85)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.name}</div>
+                        <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.28)', marginTop: 2 }}>
+                          {fmtSize(m.size)}{m.uploadedAt ? ` · ${new Date(m.uploadedAt).toLocaleDateString()}` : ''}
+                        </div>
+                      </div>
+                      {/* Char count badge */}
+                      <span style={{ fontSize: 9, fontWeight: 800, color: badgeColor, background: `${badgeColor}14`, border: `1px solid ${badgeColor}30`, padding: '2px 7px', borderRadius: 5, flexShrink: 0, letterSpacing: '0.05em' }}>
+                        {badgeLabel}
+                      </span>
+                      {/* Delete */}
+                      <button className="mat-del" onClick={e => { e.stopPropagation(); removeMaterial(id, m.id); setSelectedMaterials(prev => prev.filter(x => x !== m.id)) }}
+                        style={{ background: 'none', border: 'none', color: 'rgba(239,68,68,0.4)', padding: '4px 5px', borderRadius: 6, display: 'flex', alignItems: 'center', opacity: 0, transition: 'opacity 0.15s', cursor: 'pointer', flexShrink: 0 }}>
+                        <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                      </button>
+                    </motion.div>
+                  )
+                })}
               </AnimatePresence>
+
+              {(course.materials || []).length === 0 && !course.syllabus && (
+                <motion.div variants={fadeUp} style={{ textAlign: 'center', padding: '40px 24px', background: 'rgba(255,255,255,0.015)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 14 }}>
+                  <div style={{ fontSize: 30, marginBottom: 10 }}>📂</div>
+                  <div style={{ fontSize: 14, fontWeight: 800, color: 'rgba(255,255,255,0.35)', marginBottom: 6 }}>No materials yet</div>
+                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.2)' }}>Upload notes, slides, or PDFs above — CLUTCH will teach from them</div>
+                </motion.div>
+              )}
             </motion.div>
           )}
 
