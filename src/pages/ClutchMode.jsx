@@ -150,6 +150,43 @@ export default function ClutchMode() {
   const [showBinaryModal, setShowBinaryModal] = useState(false)
   const [sessionsOpen, setSessionsOpen] = useState(false)
   const [sessionSaved, setSessionSaved] = useState(false)
+  const [contentWarning, setContentWarning] = useState(null) // { issues, totalChars, canProceed }
+
+  // ── Content validation ────────────────────────────────────────────────────────
+  const MAX_PER_FILE = 40000
+  const MAX_TOTAL = 90000
+
+  const validateContent = () => {
+    const issues = []
+    let totalChars = 0
+    let hasAnyContent = false
+
+    for (const f of uploadedFiles) {
+      const len = (f.content || '').length
+      totalChars += Math.min(len, MAX_PER_FILE)
+
+      if (f.needsPaste) {
+        issues.push({ type: 'no-paste', file: f.name, msg: `"${f.name}" — content was never pasted in. It will be skipped.` })
+      } else if (len === 0 && !f.needsPaste) {
+        issues.push({ type: 'empty', file: f.name, msg: `"${f.name}" — no text could be extracted. It may be a scanned image PDF or an unsupported format.` })
+      } else {
+        hasAnyContent = true
+        if (len > MAX_PER_FILE) {
+          const pct = Math.round((MAX_PER_FILE / len) * 100)
+          issues.push({ type: 'trimmed', file: f.name, msg: `"${f.name}" is ${Math.round(len / 1000)}k characters — only the first ${pct}% will be used (first ~${Math.round(MAX_PER_FILE / 1000)}k chars).` })
+        }
+      }
+    }
+
+    const allFilesEmpty = uploadedFiles.length > 0 && !hasAnyContent
+    if (allFilesEmpty) {
+      issues.push({ type: 'all-empty', msg: 'None of your uploaded files contain extractable text. CLUTCH will generate from your topic name only, with no course-specific content.' })
+    }
+
+    const totalRaw = uploadedFiles.reduce((s, f) => s + (f.content || '').length, 0)
+    const canProceed = !allFilesEmpty || topic.trim()
+    return { issues, totalChars, totalRaw, canProceed, hasWarnings: issues.length > 0 }
+  }
 
   const loadingRef = useRef(null)
   const fileInputRef = useRef()
@@ -212,7 +249,20 @@ export default function ClutchMode() {
     setBinaryPasteText(''); setBinaryFileName(null); setShowBinaryModal(false)
   }
 
+  const handleGenerate = () => {
+    if (!topic.trim() && uploadedFiles.length === 0) return
+    if (uploadedFiles.length > 0) {
+      const validation = validateContent()
+      if (validation.hasWarnings) {
+        setContentWarning(validation)
+        return
+      }
+    }
+    generate()
+  }
+
   const generate = async () => {
+    setContentWarning(null)
     if (!topic.trim() && uploadedFiles.length === 0) return
     setStep('loading'); setLoadingStep(0)
     const files = uploadedFiles.map(f => ({ name: f.name, type: f.type, content: (f.content || '').slice(0, 40000) }))
@@ -408,6 +458,82 @@ NON-NEGOTIABLE STANDARDS — every output must meet these or it fails:
         </div>
       )}
 
+      {/* Content warning modal */}
+      <AnimatePresence>
+        {contentWarning && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+            <motion.div initial={{ scale: 0.94, y: 16 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.94, y: 16 }}
+              style={{ background: '#0d0f14', border: '1px solid rgba(255,255,255,0.1)', borderTop: `2px solid ${AMBER}`, borderRadius: 18, padding: '28px 28px 24px', maxWidth: 520, width: '100%', boxShadow: `0 0 60px rgba(0,0,0,0.6)` }}>
+
+              {/* Header */}
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, marginBottom: 20 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 10, background: `${AMBER}18`, border: `1px solid ${AMBER}30`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>⚠️</div>
+                <div>
+                  <div style={{ fontSize: 9, fontWeight: 900, letterSpacing: '0.22em', color: AMBER, fontFamily: 'monospace', marginBottom: 4 }}>CONTENT CHECK</div>
+                  <h3 style={{ fontSize: 16, fontWeight: 900, color: 'white', margin: 0, letterSpacing: '-0.02em' }}>Review before generating</h3>
+                  <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', margin: '4px 0 0', lineHeight: 1.5 }}>
+                    CLUTCH found issues with your uploaded materials. Proceeding without fixing these may result in generic output that doesn't reflect your actual course content.
+                  </p>
+                </div>
+              </div>
+
+              {/* Issues list */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 22 }}>
+                {contentWarning.issues.map((issue, i) => {
+                  const isError = issue.type === 'empty' || issue.type === 'no-paste' || issue.type === 'all-empty'
+                  const color = isError ? RED : AMBER
+                  const icon = isError ? '✕' : '↓'
+                  return (
+                    <div key={i} style={{ display: 'flex', gap: 10, padding: '11px 14px', borderRadius: 10, background: `${color}08`, border: `1px solid ${color}20` }}>
+                      <div style={{ width: 18, height: 18, borderRadius: '50%', background: `${color}20`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 900, color, flexShrink: 0, marginTop: 1 }}>{icon}</div>
+                      <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)', margin: 0, lineHeight: 1.5 }}>{issue.msg}</p>
+                    </div>
+                  )
+                })}
+              </div>
+
+              {/* Total size info */}
+              <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', marginBottom: 22 }}>
+                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', lineHeight: 1.5 }}>
+                  <span style={{ color: 'rgba(255,255,255,0.65)', fontWeight: 700 }}>Total content: </span>
+                  {Math.round(contentWarning.totalRaw / 1000)}k characters raw
+                  {contentWarning.totalRaw > MAX_TOTAL && (
+                    <span style={{ color: AMBER }}> — trimmed to {Math.round(MAX_TOTAL / 1000)}k for the AI</span>
+                  )}
+                </div>
+                {contentWarning.totalRaw > MAX_TOTAL && (
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginTop: 4 }}>
+                    Tip: upload fewer files or split large PDFs to get better coverage.
+                  </div>
+                )}
+              </div>
+
+              {/* Actions */}
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button
+                  onClick={() => setContentWarning(null)}
+                  style={{ flex: 1, padding: '11px 0', borderRadius: 10, fontWeight: 700, fontSize: 13, background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.55)', border: '1px solid rgba(255,255,255,0.08)', cursor: 'pointer' }}>
+                  ← Go Back &amp; Fix
+                </button>
+                {contentWarning.canProceed && (
+                  <button
+                    onClick={generate}
+                    style={{ flex: 1, padding: '11px 0', borderRadius: 10, fontWeight: 900, fontSize: 13, background: `linear-gradient(135deg,${AMBER},${RED})`, color: '#fff', border: 'none', cursor: 'pointer', letterSpacing: '0.04em' }}>
+                    Proceed Anyway
+                  </button>
+                )}
+              </div>
+              {!contentWarning.canProceed && (
+                <p style={{ fontSize: 11, color: RED, textAlign: 'center', marginTop: 12, margin: '12px 0 0' }}>
+                  No usable content found. Go back, fix your files, or enter a topic name to generate from scratch.
+                </p>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Sessions panel */}
       <AnimatePresence>
         {sessionsOpen && (
@@ -458,7 +584,7 @@ NON-NEGOTIABLE STANDARDS — every output must meet these or it fails:
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15, ease }}
             style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, padding: '18px', marginBottom: 12 }}>
             <div style={{ fontSize: 9, fontWeight: 900, color: 'rgba(255,255,255,0.25)', letterSpacing: '0.2em', fontFamily: 'monospace', marginBottom: 12 }}>TOPIC</div>
-            <input type="text" value={topic} onChange={e => setTopic(e.target.value)} onKeyDown={e => e.key === 'Enter' && canGenerate && generate()}
+            <input type="text" value={topic} onChange={e => setTopic(e.target.value)} onKeyDown={e => e.key === 'Enter' && canGenerate && handleGenerate()}
               placeholder="e.g., Cell Division, Dynamic Programming, WW2, Supply & Demand..."
               style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, color: 'white', padding: '11px 14px', fontSize: 14, outline: 'none', boxSizing: 'border-box' }}
               onFocus={e => e.target.style.borderColor = `${BLUE}60`} onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.08)'} />
@@ -519,7 +645,7 @@ NON-NEGOTIABLE STANDARDS — every output must meet these or it fails:
               style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, color: '#fff', fontSize: 13, padding: '10px 14px', resize: 'none', outline: 'none', boxSizing: 'border-box' }} />
           </motion.div>
 
-          <motion.button whileHover={{ scale: 1.015 }} whileTap={{ scale: 0.98 }} onClick={generate} disabled={!canGenerate}
+          <motion.button whileHover={{ scale: 1.015 }} whileTap={{ scale: 0.98 }} onClick={handleGenerate} disabled={!canGenerate}
             style={{ width: '100%', padding: '16px 0', borderRadius: 14, fontSize: 13, fontWeight: 900, letterSpacing: '0.1em', background: canGenerate ? `linear-gradient(135deg,${BLUE},${CYAN})` : 'rgba(255,255,255,0.05)', color: canGenerate ? '#fff' : 'rgba(255,255,255,0.2)', border: 'none', cursor: canGenerate ? 'pointer' : 'not-allowed', boxShadow: canGenerate ? `0 0 30px ${BLUE}35` : 'none', transition: 'all 0.2s' }}>
             {uploadedFiles.length > 0 ? `BEGIN SESSION — ${uploadedFiles.length} FILE${uploadedFiles.length !== 1 ? 'S' : ''} →` : 'BEGIN SESSION →'}
           </motion.button>
