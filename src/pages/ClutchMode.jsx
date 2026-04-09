@@ -215,7 +215,7 @@ export default function ClutchMode() {
   const generate = async () => {
     if (!topic.trim() && uploadedFiles.length === 0) return
     setStep('loading'); setLoadingStep(0)
-    const files = uploadedFiles.map(f => ({ name: f.name, type: f.type, content: (f.content || '').slice(0, 8000) }))
+    const files = uploadedFiles.map(f => ({ name: f.name, type: f.type, content: (f.content || '').slice(0, 40000) }))
     const courseCtx = selectedCourse ? { name: selectedCourse.name, code: selectedCourse.code, professor: selectedCourse.professor } : preload.courseName ? { name: preload.courseName, code: preload.courseCode } : null
     const effectiveTopic = topic || selectedCourse?.name || preload.courseName || 'General Study'
     const fileContext = files.map(f => `--- FILE: ${f.name} ---\n${f.content}`).join('\n\n')
@@ -243,7 +243,7 @@ TOPIC: "${effectiveTopic}"
 ${courseCtx ? `COURSE: ${courseCtx.name} (${courseCtx.code || ''})${courseCtx.professor ? ` — Prof. ${courseCtx.professor}` : ''}` : ''}
 EXAM TYPE: ${examType || 'mixed'} | LEVEL: ${courseLevel || 'undergraduate'}
 ${focusAreas ? `STUDENT SPECIFICALLY NEEDS HELP WITH: ${focusAreas}` : ''}
-${fileContext ? `\nCOURSE MATERIALS — THIS IS YOUR LECTURE CONTENT. Teach everything in these materials. Every definition, concept, formula, process, event, and relationship is fair game for the exam:\n${fileContext.slice(0, 14000)}` : ''}
+${fileContext ? `\nCOURSE MATERIALS — READ EVERY WORD. These are the actual slides, notes, and documents for this course. Your ENTIRE output must be grounded in this content. Do not invent, generalize, or substitute — extract and teach exactly what is in these materials:\n${fileContext.slice(0, 90000)}` : ''}
 
 STEP 1 — Detect content type:
 - "technical": math, CS, programming, physics, chemistry, engineering, statistics, econometrics
@@ -341,7 +341,7 @@ NON-NEGOTIABLE STANDARDS — every output must meet these or it fails:
       const res = await fetch('/api/groq', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.2, max_tokens: 8000 }),
+        body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.2, max_tokens: 16000 }),
       })
       setLoadingStep(2)
       if (res.status === 429) { const { error } = await res.json().catch(() => ({})); setStep('input'); alert(error || 'Daily AI limit reached. Resets at midnight.'); return }
