@@ -764,7 +764,17 @@ export default function ClutchResultView({ result, topic, courseName, uploadedFi
           onShuffle={shuffleFlashcards} onClose={() => setFlashcardActive(false)} />
       )}
 
-      <div style={{ padding: embedded ? '0' : '0' }}>
+      <style>{`
+        .clutch-result-layout { display: grid; grid-template-columns: 1fr 420px; gap: 28px; align-items: start; }
+        .clutch-chat-col { position: sticky; top: 72px; height: calc(100vh - 90px); }
+        @media (max-width: 960px) {
+          .clutch-result-layout { grid-template-columns: 1fr; }
+          .clutch-chat-col { position: static; height: 520px; }
+        }
+      `}</style>
+
+      <div className="clutch-result-layout">
+      <div style={{ minWidth: 0 }}>
         {/* Stat pills */}
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease }} style={{ marginBottom: 36 }}>
           {embedded && (
@@ -813,22 +823,27 @@ export default function ClutchResultView({ result, topic, courseName, uploadedFi
           </div>
         </motion.div>
 
-        {/* ── CLUTCH PROFESSOR ── */}
-        <ClutchChat result={result} topic={topic} courseName={courseName} />
-
-        {/* SCENE 00 · DECODE */}
+        {/* SCENE 00 · LECTURE */}
         {result.plainEnglish && (
-          <ScanSection scene="00 · DECODE" title="In Other Words" accent={VIOLET}>
-            <div style={{ background: 'rgba(139,92,246,0.05)', border: '1px solid rgba(139,92,246,0.18)', borderRadius: 20, padding: '32px 36px', position: 'relative', overflow: 'hidden' }}>
-              <div style={{ position: 'absolute', top: -20, left: 18, fontSize: 140, color: 'rgba(139,92,246,0.07)', fontFamily: 'Georgia, serif', lineHeight: 1, pointerEvents: 'none', userSelect: 'none' }}>"</div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 22 }}>
-                <div style={{ width: 30, height: 30, borderRadius: '50%', background: `linear-gradient(135deg,${VIOLET},${BLUE})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, flexShrink: 0 }}>⚡</div>
-                <span style={{ fontSize: 9, fontWeight: 900, letterSpacing: '0.22em', color: VIOLET, fontFamily: 'monospace' }}>AI TUTOR — PLAIN ENGLISH</span>
-                <div style={{ flex: 1, height: 1, background: 'rgba(139,92,246,0.15)' }} />
+          <ScanSection scene="00 · LECTURE" title="The Professor's Lecture" accent={VIOLET}>
+            <div style={{ background: 'rgba(139,92,246,0.04)', border: '1px solid rgba(139,92,246,0.15)', borderRadius: 20, padding: '28px 30px', position: 'relative', overflow: 'hidden' }}>
+              {/* large decorative quote mark */}
+              <div style={{ position: 'absolute', top: -10, left: 14, fontSize: 120, color: 'rgba(139,92,246,0.06)', fontFamily: 'Georgia, serif', lineHeight: 1, pointerEvents: 'none', userSelect: 'none' }}>"</div>
+              {/* professor badge */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 24 }}>
+                <div style={{ width: 32, height: 32, borderRadius: '50%', background: `linear-gradient(135deg,${VIOLET},${BLUE})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0, boxShadow: `0 0 14px ${VIOLET}40` }}>⚡</div>
+                <div>
+                  <div style={{ fontSize: 10, fontWeight: 900, letterSpacing: '0.2em', color: VIOLET, fontFamily: 'monospace' }}>CLUTCH — PHASE A LECTURE</div>
+                  <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.28)', marginTop: 1 }}>{topic || courseName || 'Full course coverage'}</div>
+                </div>
+                <div style={{ flex: 1, height: 1, background: `linear-gradient(90deg,${VIOLET}25,transparent)`, marginLeft: 8 }} />
               </div>
+              {/* lecture paragraphs */}
               {result.plainEnglish.split('\n').filter(p => p.trim()).map((para, i, arr) => (
-                <motion.p key={i} initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.1, ease }}
-                  style={{ fontSize: 15, lineHeight: 1.95, color: 'rgba(255,255,255,0.82)', fontWeight: 400, margin: 0, marginBottom: i < arr.length - 1 ? 22 : 0 }}>
+                <motion.p key={i}
+                  initial={{ opacity: 0, y: 10 }} whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }} transition={{ delay: i * 0.07, ease }}
+                  style={{ fontSize: 14, lineHeight: 2, color: 'rgba(255,255,255,0.82)', fontWeight: 400, margin: 0, marginBottom: i < arr.length - 1 ? 20 : 0 }}>
                   {para}
                 </motion.p>
               ))}
@@ -1132,7 +1147,13 @@ export default function ClutchResultView({ result, topic, courseName, uploadedFi
         )}
 
         <div style={{ height: 40 }} />
+      </div>{/* end left column */}
+
+      {/* RIGHT: CLUTCH sticky chat */}
+      <div className="clutch-chat-col">
+        <ClutchChat result={result} topic={topic} courseName={courseName} />
       </div>
+      </div>{/* end grid */}
     </>
   )
 }
@@ -1319,8 +1340,7 @@ Language rules:
         borderTop: `2px solid ${VIOLET}`,
         borderRadius: 20,
         display: 'flex', flexDirection: 'column',
-        height: 520,
-        marginBottom: 48,
+        height: '100%',
         boxShadow: `0 0 60px ${VIOLET}0a`,
       }}>
 
