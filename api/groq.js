@@ -1,5 +1,5 @@
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions'
-const MAX_BODY_BYTES = 60_000
+const MAX_BODY_BYTES = 500_000   // 500KB — supports large course material payloads
 const DAILY_LIMIT = 20
 
 // ── JWT parsing (no signature verification — Supabase RLS is the real guard) ──
@@ -86,9 +86,10 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'messages array required' })
   }
 
+  // Preserve array content (vision/multimodal messages) — only stringify scalar content
   const safeMessages = messages.map(m => ({
     role: ['user', 'assistant', 'system'].includes(m.role) ? m.role : 'user',
-    content: String(m.content || '').slice(0, 20000),
+    content: Array.isArray(m.content) ? m.content : String(m.content || ''),
   }))
 
   try {
@@ -100,7 +101,7 @@ export default async function handler(req, res) {
         messages: safeMessages,
         ...(response_format ? { response_format } : {}),
         temperature: typeof temperature === 'number' ? Math.min(Math.max(temperature, 0), 1) : 0.3,
-        max_tokens: typeof max_tokens === 'number' ? Math.min(max_tokens, 8000) : 4096,
+        max_tokens: typeof max_tokens === 'number' ? Math.min(max_tokens, 16000) : 4096,
       }),
     })
 
