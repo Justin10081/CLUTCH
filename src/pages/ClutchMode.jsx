@@ -168,7 +168,10 @@ export default function ClutchMode() {
       if (f.needsPaste) {
         issues.push({ type: 'no-paste', file: f.name, msg: `"${f.name}" — content was never pasted in. It will be skipped.` })
       } else if (len === 0 && !f.needsPaste) {
-        issues.push({ type: 'empty', file: f.name, msg: `"${f.name}" — no text could be extracted. It may be a scanned image PDF or an unsupported format.` })
+        issues.push({ type: 'empty', file: f.name, msg: `"${f.name}" — no text could be extracted. This is likely a scanned/image-based PDF. Convert it to text or copy-paste the content manually.` })
+      } else if (len < 400 && !f.needsPaste) {
+        hasAnyContent = true
+        issues.push({ type: 'sparse', file: f.name, msg: `"${f.name}" — only ${len} characters extracted. This is very little content. The file may be mostly images, have unusual encoding, or be a scanned PDF. CLUTCH may generate generic output for this file.` })
       } else {
         hasAnyContent = true
         if (len > MAX_PER_FILE) {
@@ -487,7 +490,14 @@ NON-NEGOTIABLE STANDARDS — every output must meet these or it fails:
                   return (
                     <div key={i} style={{ display: 'flex', gap: 10, padding: '11px 14px', borderRadius: 10, background: `${color}08`, border: `1px solid ${color}20` }}>
                       <div style={{ width: 18, height: 18, borderRadius: '50%', background: `${color}20`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 900, color, flexShrink: 0, marginTop: 1 }}>{icon}</div>
-                      <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)', margin: 0, lineHeight: 1.5 }}>{issue.msg}</p>
+                      <div>
+                    <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)', margin: 0, lineHeight: 1.5 }}>{issue.msg}</p>
+                    {(issue.type === 'empty' || issue.type === 'sparse') && (
+                      <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', margin: '4px 0 0', lineHeight: 1.5 }}>
+                        Fix: use a PDF with selectable text, or copy all text from the document and paste it as a .txt file.
+                      </p>
+                    )}
+                  </div>
                     </div>
                   )
                 })}
@@ -605,15 +615,34 @@ NON-NEGOTIABLE STANDARDS — every output must meet these or it fails:
             </div>
             {uploadedFiles.length > 0 && (
               <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {uploadedFiles.map(f => (
-                  <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 8, background: f.fromCourse ? 'rgba(52,211,153,0.05)' : 'rgba(255,255,255,0.03)', border: `1px solid ${f.fromCourse ? 'rgba(52,211,153,0.12)' : 'rgba(255,255,255,0.06)'}` }}>
-                    <span style={{ fontSize: 14 }}>{fileIcon(f.type, f.name)}</span>
-                    <span style={{ flex: 1, fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.7)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
-                    {f.needsPaste && <button onClick={() => { setBinaryFileName(f.name); setShowBinaryModal(true) }} style={{ fontSize: 10, fontWeight: 700, color: AMBER, background: `${AMBER}10`, border: `1px solid ${AMBER}25`, borderRadius: 6, padding: '2px 7px', cursor: 'pointer' }}>Paste text</button>}
-                    {f.fromCourse && selectedCourse && <span style={{ fontSize: 10, fontWeight: 700, color: GREEN, background: `${GREEN}10`, borderRadius: 6, padding: '2px 7px' }}>{selectedCourse.code}</span>}
-                    {!f.fromCourse && <button onClick={() => removeFile(f.id)} style={{ width: 22, height: 22, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', color: 'rgba(255,255,255,0.25)', cursor: 'pointer' }}>✕</button>}
-                  </div>
-                ))}
+                {uploadedFiles.map(f => {
+                  const chars = (f.content || '').length
+                  const isNeedsPaste = f.needsPaste
+                  const isEmpty = !isNeedsPaste && chars === 0
+                  const isSuspicious = !isNeedsPaste && chars > 0 && chars < 400
+                  const isGood = !isNeedsPaste && chars >= 400
+
+                  let statusBadge = null
+                  if (isNeedsPaste) {
+                    statusBadge = <button onClick={() => { setBinaryFileName(f.name); setShowBinaryModal(true) }} style={{ fontSize: 10, fontWeight: 700, color: AMBER, background: `${AMBER}10`, border: `1px solid ${AMBER}25`, borderRadius: 6, padding: '2px 8px', cursor: 'pointer', flexShrink: 0 }}>Paste text ⚠</button>
+                  } else if (isEmpty) {
+                    statusBadge = <span style={{ fontSize: 10, fontWeight: 700, color: RED, background: `${RED}10`, border: `1px solid ${RED}25`, borderRadius: 6, padding: '2px 8px', flexShrink: 0 }}>✕ No text extracted</span>
+                  } else if (isSuspicious) {
+                    statusBadge = <span title="Very little text extracted — may be a scanned PDF" style={{ fontSize: 10, fontWeight: 700, color: AMBER, background: `${AMBER}10`, border: `1px solid ${AMBER}25`, borderRadius: 6, padding: '2px 8px', flexShrink: 0 }}>⚠ {chars} chars</span>
+                  } else if (isGood) {
+                    statusBadge = <span style={{ fontSize: 10, fontWeight: 600, color: GREEN, background: `${GREEN}08`, border: `1px solid ${GREEN}18`, borderRadius: 6, padding: '2px 8px', flexShrink: 0 }}>✓ {chars >= 1000 ? `${Math.round(chars / 1000)}k` : chars} chars</span>
+                  }
+
+                  return (
+                    <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 8, background: isEmpty || isNeedsPaste ? `${RED}06` : isSuspicious ? `${AMBER}05` : f.fromCourse ? 'rgba(52,211,153,0.05)' : 'rgba(255,255,255,0.03)', border: `1px solid ${isEmpty || isNeedsPaste ? `${RED}20` : isSuspicious ? `${AMBER}20` : f.fromCourse ? 'rgba(52,211,153,0.12)' : 'rgba(255,255,255,0.06)'}` }}>
+                      <span style={{ fontSize: 14 }}>{fileIcon(f.type, f.name)}</span>
+                      <span style={{ flex: 1, fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.7)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
+                      {statusBadge}
+                      {f.fromCourse && selectedCourse && <span style={{ fontSize: 10, fontWeight: 700, color: GREEN, background: `${GREEN}10`, borderRadius: 6, padding: '2px 7px', flexShrink: 0 }}>{selectedCourse.code}</span>}
+                      {!f.fromCourse && <button onClick={() => removeFile(f.id)} style={{ width: 22, height: 22, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', color: 'rgba(255,255,255,0.25)', cursor: 'pointer', flexShrink: 0 }}>✕</button>}
+                    </div>
+                  )
+                })}
               </div>
             )}
           </motion.div>
