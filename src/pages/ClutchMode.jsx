@@ -23,6 +23,45 @@ async function extractPDFText(file) {
   return text
 }
 
+// ─── Vision/OCR text extraction ───────────────────────────────────────────────
+async function extractTextWithVision(imageDataUrl) {
+  try {
+    const token = await getAuthToken()
+    const res = await fetch('/api/groq', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({
+        model: 'llama-3.2-11b-vision-preview',
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image_url', image_url: { url: imageDataUrl } },
+            { type: 'text', text: 'Extract ALL text from this image exactly as written. Include every word, number, formula, equation, diagram label, heading, and bullet point. Preserve the structure. Output only the extracted text, nothing else.' }
+          ]
+        }],
+        temperature: 0,
+        max_tokens: 4000,
+      }),
+    })
+    if (!res.ok) return null
+    const data = await res.json()
+    return data.choices?.[0]?.message?.content?.trim() || null
+  } catch { return null }
+}
+
+// Render a PDF page to a JPEG data URL for vision extraction
+async function renderPDFPageAsImage(pdfDoc, pageNum) {
+  try {
+    const page = await pdfDoc.getPage(pageNum)
+    const viewport = page.getViewport({ scale: 1.8 })
+    const canvas = document.createElement('canvas')
+    canvas.width = viewport.width
+    canvas.height = viewport.height
+    await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise
+    return canvas.toDataURL('image/jpeg', 0.85)
+  } catch { return null }
+}
+
 function generateFallback(topic, files) {
   const hasFiles = files.length > 0
   const fileNames = files.map(f => f.name).join(', ')
@@ -223,13 +262,69 @@ export default function ClutchMode() {
   const handleFileRead = useCallback((file) => {
     return new Promise((resolve) => {
       const name = file.name.toLowerCase()
+      const isImage = /\.(jpg|jpeg|png|webp)$/i.test(name) || (file.type.startsWith('image/') && !file.type.includes('gif'))
       const isBinary = name.endsWith('.pptx') || name.endsWith('.ppt') || name.endsWith('.docx') || name.endsWith('.doc')
       const isPDF = name.endsWith('.pdf') || file.type === 'application/pdf'
-      if (isBinary) { setBinaryFileName(file.name); setShowBinaryModal(true); resolve({ id: crypto.randomUUID(), name: file.name, content: '', type: file.type, fromCourse: false, needsPaste: true }); return }
-      if (isPDF) {
-        extractPDFText(file).then(text => resolve({ id: crypto.randomUUID(), name: file.name, content: text, type: file.type, fromCourse: false })).catch(() => resolve({ id: crypto.randomUUID(), name: file.name, content: '', type: file.type, fromCourse: false }))
+
+      if (isImage) {
+        const id = crypto.randomUUID()
+        const fileObj = { id, name: file.name, content: '', type: file.type, fromCourse: false, extracting: true, extractMethod: 'vision' }
+        resolve(fileObj)
+        const reader = new FileReader()
+        reader.onload = async (e) => {
+          const text = await extractTextWithVision(e.target.result)
+          setUploadedFiles(prev => prev.map(f => f.id === id ? { ...f, content: text || '', extracting: false } : f))
+        }
+        reader.onerror = () => setUploadedFiles(prev => prev.map(f => f.id === id ? { ...f, extracting: false } : f))
+        reader.readAsDataURL(file)
         return
       }
+
+      if (isBinary) {
+        setBinaryFileName(file.name)
+        setShowBinaryModal(true)
+        resolve({ id: crypto.randomUUID(), name: file.name, content: '', type: file.type, fromCourse: false, needsPaste: true })
+        return
+      }
+
+      if (isPDF) {
+        const id = crypto.randomUUID()
+        const fileObj = { id, name: file.name, content: '', type: file.type, fromCourse: false, extracting: true, extractMethod: 'pdf' }
+        resolve(fileObj)
+        file.arrayBuffer().then(async (buf) => {
+          try {
+            const pdf = await pdfjsLib.getDocument({ data: buf }).promise
+            let text = ''
+            for (let i = 1; i <= pdf.numPages; i++) {
+              const page = await pdf.getPage(i)
+              const content = await page.getTextContent()
+              text += content.items.map(item => item.str).join(' ') + '\n'
+            }
+            const avgCharsPerPage = text.trim().length / pdf.numPages
+            if (avgCharsPerPage < 80) {
+              // Likely scanned/image PDF — run vision OCR on up to 10 pages
+              setUploadedFiles(prev => prev.map(f => f.id === id ? { ...f, extractMethod: 'ocr', extracting: true } : f))
+              let ocrText = ''
+              const pagesToOCR = Math.min(pdf.numPages, 10)
+              for (let i = 1; i <= pagesToOCR; i++) {
+                const imgUrl = await renderPDFPageAsImage(pdf, i)
+                if (imgUrl) {
+                  const pageText = await extractTextWithVision(imgUrl)
+                  if (pageText) ocrText += `[Page ${i}]\n${pageText}\n\n`
+                }
+              }
+              setUploadedFiles(prev => prev.map(f => f.id === id ? { ...f, content: ocrText, extracting: false } : f))
+            } else {
+              setUploadedFiles(prev => prev.map(f => f.id === id ? { ...f, content: text, extracting: false } : f))
+            }
+          } catch {
+            setUploadedFiles(prev => prev.map(f => f.id === id ? { ...f, content: '', extracting: false } : f))
+          }
+        })
+        return
+      }
+
+      // Plain text files
       const reader = new FileReader()
       reader.onload = (e) => resolve({ id: crypto.randomUUID(), name: file.name, content: e.target.result, type: file.type, fromCourse: false })
       reader.onerror = () => resolve({ id: crypto.randomUUID(), name: file.name, content: '', type: file.type, fromCourse: false })
@@ -436,6 +531,7 @@ NON-NEGOTIABLE STANDARDS — every output must meet these or it fails:
     if (type.includes('pdf') || name.endsWith('.pdf')) return '📄'
     if (name.endsWith('.pptx') || name.endsWith('.ppt')) return '📊'
     if (name.endsWith('.docx') || name.endsWith('.doc')) return '📝'
+    if (type.startsWith('image/') || /\.(jpg|jpeg|png|webp)$/i.test(name)) return '🖼'
     return '📋'
   }
 
@@ -570,114 +666,228 @@ NON-NEGOTIABLE STANDARDS — every output must meet these or it fails:
 
       {/* ══════════════ INPUT ══════════════ */}
       {step === 'input' && (
-        <div style={{ maxWidth: 720, margin: '0 auto', padding: '40px 24px 120px' }}>
-          <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease }} style={{ marginBottom: 40 }}>
-            <div style={{ fontSize: 9, fontWeight: 900, color: BLUE, letterSpacing: '0.25em', fontFamily: 'monospace', marginBottom: 12 }}>SCENE 00 — BRIEFING</div>
-            <h1 style={{ fontSize: 'clamp(28px,5vw,44px)', fontWeight: 900, letterSpacing: '-0.045em', color: 'white', margin: 0, lineHeight: 1 }}>Clutch Mode</h1>
-            <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.35)', marginTop: 10 }}>Upload your materials. Get a complete study guide built around exactly what you're learning.</p>
-          </motion.div>
+        <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', padding: '0 0 60px' }}>
+          <style>{`
+            @keyframes zone-pulse { 0%,100%{opacity:0.4} 50%{opacity:1} }
+            @keyframes file-in { from{opacity:0;transform:translateX(-12px)} to{opacity:1;transform:translateX(0)} }
+            .clutch-input-grid { display: grid; grid-template-columns: 1fr 420px; gap: 0; min-height: 100vh; }
+            @media(max-width:880px){ .clutch-input-grid { grid-template-columns: 1fr; } }
+          `}</style>
 
-          {courses.length > 0 && (
-            <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1, ease }}
-              style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, padding: '18px', marginBottom: 12 }}>
-              <div style={{ fontSize: 9, fontWeight: 900, color: 'rgba(255,255,255,0.25)', letterSpacing: '0.2em', fontFamily: 'monospace', marginBottom: 12 }}>COURSE</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                <button onClick={() => setSelectedCourseId('')} style={{ padding: '7px 14px', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer', background: !selectedCourseId ? 'rgba(255,255,255,0.1)' : 'transparent', color: !selectedCourseId ? '#fff' : 'rgba(255,255,255,0.4)', border: `1px solid ${!selectedCourseId ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.07)'}`, transition: 'all 0.15s' }}>General</button>
-                {courses.map(c => (
-                  <button key={c.id} onClick={() => setSelectedCourseId(c.id)} style={{ padding: '7px 14px', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer', background: selectedCourseId === c.id ? `${c.color}18` : 'transparent', color: selectedCourseId === c.id ? c.color : 'rgba(255,255,255,0.4)', border: `1px solid ${selectedCourseId === c.id ? c.color + '40' : 'rgba(255,255,255,0.07)'}`, transition: 'all 0.15s' }}>{c.code}</button>
-                ))}
-              </div>
-              {selectedCourse?.materials?.length > 0 && <p style={{ fontSize: 11, color: GREEN, marginTop: 10 }}>✓ {selectedCourse.materials.length} file{selectedCourse.materials.length !== 1 ? 's' : ''} from {selectedCourse.code} loaded</p>}
-            </motion.div>
-          )}
+          <div className="clutch-input-grid">
 
-          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15, ease }}
-            style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, padding: '18px', marginBottom: 12 }}>
-            <div style={{ fontSize: 9, fontWeight: 900, color: 'rgba(255,255,255,0.25)', letterSpacing: '0.2em', fontFamily: 'monospace', marginBottom: 12 }}>TOPIC</div>
-            <input type="text" value={topic} onChange={e => setTopic(e.target.value)} onKeyDown={e => e.key === 'Enter' && canGenerate && handleGenerate()}
-              placeholder="e.g., Cell Division, Dynamic Programming, WW2, Supply & Demand..."
-              style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, color: 'white', padding: '11px 14px', fontSize: 14, outline: 'none', boxSizing: 'border-box' }}
-              onFocus={e => e.target.style.borderColor = `${BLUE}60`} onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.08)'} />
-          </motion.div>
+            {/* LEFT — Drop zone */}
+            <div style={{ borderRight: '1px solid rgba(255,255,255,0.05)', display: 'flex', flexDirection: 'column', padding: '40px 32px', position: 'relative', overflow: 'hidden' }}>
+              {/* ambient glow */}
+              <div style={{ position: 'absolute', top: -80, left: -80, width: 400, height: 400, borderRadius: '50%', background: `radial-gradient(ellipse, ${isDragging ? BLUE : 'rgba(59,130,246,0.12)'} 0%, transparent 70%)`, pointerEvents: 'none', transition: 'background 0.4s' }} />
 
-          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2, ease }}
-            style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, padding: '18px', marginBottom: 12 }}>
-            <div style={{ fontSize: 9, fontWeight: 900, color: 'rgba(255,255,255,0.25)', letterSpacing: '0.2em', fontFamily: 'monospace', marginBottom: 12 }}>UPLOAD MATERIALS <span style={{ color: 'rgba(255,255,255,0.18)', fontWeight: 400, textTransform: 'none', fontSize: 10, letterSpacing: 0 }}>notes, slides, PDFs</span></div>
-            <input ref={fileInputRef} type="file" multiple accept=".txt,.md,.pdf,.pptx,.docx,.csv,.rtf" style={{ display: 'none' }} onChange={e => handleFiles(e.target.files)} />
-            <div onDrop={handleDrop} onDragOver={handleDragOver} onDragLeave={handleDragLeave} onClick={() => fileInputRef.current?.click()}
-              style={{ border: `1.5px dashed ${isDragging ? BLUE : 'rgba(255,255,255,0.12)'}`, borderRadius: 12, padding: '28px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, cursor: 'pointer', background: isDragging ? 'rgba(59,130,246,0.05)' : 'transparent', transition: 'all 0.2s', position: 'relative', overflow: 'hidden' }}>
-              {isDragging && <div style={{ position: 'absolute', inset: 0, background: `linear-gradient(90deg, transparent, ${BLUE}08, transparent)`, animation: 'clutch-scan 1.5s linear infinite' }} />}
-              <div style={{ width: 40, height: 40, borderRadius: 10, background: isDragging ? `${BLUE}18` : 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke={isDragging ? BLUE : 'rgba(255,255,255,0.35)'} strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" /></svg>
-              </div>
-              <p style={{ color: isDragging ? BLUE : 'rgba(255,255,255,0.6)', fontWeight: 700, fontSize: 13 }}>{isDragging ? 'Drop files' : 'Drag & drop or click'}</p>
-              <p style={{ color: 'rgba(255,255,255,0.25)', fontSize: 11 }}>.txt .md .pdf .pptx .docx</p>
+              {/* header */}
+              <motion.div initial={{ opacity: 0, y: -16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease }} style={{ marginBottom: 32, position: 'relative' }}>
+                <div style={{ fontSize: 9, fontWeight: 900, color: BLUE, letterSpacing: '0.28em', fontFamily: 'monospace', marginBottom: 10 }}>[ CLUTCH MODE ]</div>
+                <h1 style={{ fontSize: 'clamp(32px,4vw,52px)', fontWeight: 900, letterSpacing: '-0.05em', color: 'white', margin: '0 0 8px', lineHeight: 1 }}>Drop your<br /><span style={{ color: BLUE }}>materials.</span></h1>
+                <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.35)', margin: 0, lineHeight: 1.5 }}>PDFs, slides, notes, images — CLUTCH reads everything<br />and teaches you the entire course in one session.</p>
+              </motion.div>
+
+              {/* Drop zone */}
+              <input ref={fileInputRef} type="file" multiple accept=".txt,.md,.pdf,.pptx,.docx,.csv,.rtf,.jpg,.jpeg,.png,.webp" style={{ display: 'none' }} onChange={e => handleFiles(e.target.files)} />
+              <motion.div
+                initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.1, duration: 0.5, ease }}
+                onDrop={handleDrop} onDragOver={handleDragOver} onDragLeave={handleDragLeave} onClick={() => fileInputRef.current?.click()}
+                whileHover={{ borderColor: `${BLUE}70` }}
+                style={{
+                  flex: uploadedFiles.length === 0 ? 1 : 'none',
+                  minHeight: uploadedFiles.length === 0 ? 280 : 140,
+                  border: `2px dashed ${isDragging ? BLUE : 'rgba(255,255,255,0.1)'}`,
+                  borderRadius: 20,
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                  gap: 12, cursor: 'pointer',
+                  background: isDragging ? `${BLUE}08` : 'rgba(255,255,255,0.015)',
+                  transition: 'all 0.25s',
+                  position: 'relative', overflow: 'hidden',
+                }}>
+                {isDragging && (
+                  <>
+                    <div style={{ position: 'absolute', inset: 0, background: `linear-gradient(90deg, transparent, ${BLUE}12, transparent)`, animation: 'clutch-scan 1.2s linear infinite' }} />
+                    <div style={{ position: 'absolute', inset: 0, border: `2px solid ${BLUE}`, borderRadius: 20, animation: 'zone-pulse 1s ease-in-out infinite' }} />
+                  </>
+                )}
+                <motion.div animate={{ scale: isDragging ? 1.15 : 1, rotate: isDragging ? -8 : 0 }} transition={{ type: 'spring', stiffness: 300 }}
+                  style={{ width: 56, height: 56, borderRadius: 16, background: isDragging ? `${BLUE}20` : 'rgba(255,255,255,0.04)', border: `1px solid ${isDragging ? BLUE + '50' : 'rgba(255,255,255,0.08)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <svg width="26" height="26" fill="none" viewBox="0 0 24 24" stroke={isDragging ? BLUE : 'rgba(255,255,255,0.4)'} strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+                  </svg>
+                </motion.div>
+                <div style={{ textAlign: 'center' }}>
+                  <p style={{ color: isDragging ? BLUE : 'rgba(255,255,255,0.65)', fontWeight: 800, fontSize: 15, margin: '0 0 4px' }}>{isDragging ? 'Release to upload' : 'Drag & drop files here'}</p>
+                  <p style={{ color: 'rgba(255,255,255,0.25)', fontSize: 12, margin: 0 }}>or click to browse</p>
+                </div>
+                {/* supported types row */}
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'center', padding: '0 20px' }}>
+                  {['PDF', 'PPTX', 'DOCX', 'TXT', 'PNG', 'JPG'].map(t => (
+                    <span key={t} style={{ fontSize: 9, fontWeight: 900, padding: '3px 8px', borderRadius: 5, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.3)', letterSpacing: '0.1em' }}>{t}</span>
+                  ))}
+                </div>
+                {!isDragging && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 20, background: `${CYAN}08`, border: `1px solid ${CYAN}18` }}>
+                    <span style={{ fontSize: 10 }}>👁</span>
+                    <span style={{ fontSize: 10, color: CYAN, fontWeight: 700 }}>Images & scanned PDFs auto-extracted via AI vision</span>
+                  </div>
+                )}
+              </motion.div>
+
+              {/* File list */}
+              <AnimatePresence>
+                {uploadedFiles.length > 0 && (
+                  <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 6, overflow: 'hidden' }}>
+                    <div style={{ fontSize: 9, fontWeight: 900, letterSpacing: '0.2em', color: 'rgba(255,255,255,0.2)', marginBottom: 4, fontFamily: 'monospace' }}>{uploadedFiles.length} FILE{uploadedFiles.length !== 1 ? 'S' : ''} LOADED</div>
+                    {uploadedFiles.map((f, idx) => {
+                      const chars = (f.content || '').length
+                      const isNeedsPaste = f.needsPaste
+                      const isEmpty = !isNeedsPaste && !f.extracting && chars === 0
+                      const isSuspicious = !isNeedsPaste && !f.extracting && chars > 0 && chars < 400
+                      const isGood = !isNeedsPaste && !f.extracting && chars >= 400
+
+                      let statusBadge = null
+                      if (f.extracting) {
+                        const label = f.extractMethod === 'ocr' ? '🔍 OCR scanning...' : f.extractMethod === 'vision' ? '👁 Reading image...' : '⏳ Extracting...'
+                        statusBadge = <span style={{ fontSize: 10, fontWeight: 700, color: CYAN, background: `${CYAN}10`, border: `1px solid ${CYAN}25`, borderRadius: 6, padding: '2px 8px', flexShrink: 0 }}>{label}</span>
+                      } else if (isNeedsPaste) {
+                        statusBadge = <button onClick={(e) => { e.stopPropagation(); setBinaryFileName(f.name); setShowBinaryModal(true) }} style={{ fontSize: 10, fontWeight: 700, color: AMBER, background: `${AMBER}10`, border: `1px solid ${AMBER}25`, borderRadius: 6, padding: '2px 8px', cursor: 'pointer', flexShrink: 0 }}>Paste text ⚠</button>
+                      } else if (isEmpty) {
+                        statusBadge = <span style={{ fontSize: 10, fontWeight: 700, color: RED, background: `${RED}10`, border: `1px solid ${RED}25`, borderRadius: 6, padding: '2px 8px', flexShrink: 0 }}>✕ No text</span>
+                      } else if (isSuspicious) {
+                        statusBadge = <span style={{ fontSize: 10, fontWeight: 700, color: AMBER, background: `${AMBER}10`, border: `1px solid ${AMBER}25`, borderRadius: 6, padding: '2px 8px', flexShrink: 0 }}>⚠ {chars} chars</span>
+                      } else if (isGood) {
+                        const method = f.extractMethod === 'ocr' ? ' OCR' : f.extractMethod === 'vision' ? ' vision' : ''
+                        statusBadge = <span style={{ fontSize: 10, fontWeight: 600, color: GREEN, background: `${GREEN}08`, border: `1px solid ${GREEN}18`, borderRadius: 6, padding: '2px 8px', flexShrink: 0 }}>✓ {chars >= 1000 ? `${Math.round(chars / 1000)}k` : chars}ch{method}</span>
+                      }
+
+                      return (
+                        <motion.div key={f.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} transition={{ delay: idx * 0.04, ease }}
+                          style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 10, background: isEmpty ? `${RED}06` : isSuspicious ? `${AMBER}05` : f.fromCourse ? 'rgba(52,211,153,0.05)' : 'rgba(255,255,255,0.03)', border: `1px solid ${isEmpty ? `${RED}20` : isSuspicious ? `${AMBER}20` : f.fromCourse ? 'rgba(52,211,153,0.12)' : 'rgba(255,255,255,0.06)'}` }}>
+                          <span style={{ fontSize: 16 }}>{fileIcon(f.type, f.name)}</span>
+                          <span style={{ flex: 1, fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.75)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
+                          {statusBadge}
+                          {f.fromCourse && selectedCourse && <span style={{ fontSize: 10, fontWeight: 700, color: GREEN, background: `${GREEN}10`, borderRadius: 6, padding: '2px 7px', flexShrink: 0 }}>{selectedCourse.code}</span>}
+                          {!f.fromCourse && <button onClick={() => removeFile(f.id)} style={{ width: 22, height: 22, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', color: 'rgba(255,255,255,0.2)', cursor: 'pointer', flexShrink: 0, fontSize: 14 }}>✕</button>}
+                        </motion.div>
+                      )
+                    })}
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
-            {uploadedFiles.length > 0 && (
-              <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {uploadedFiles.map(f => {
-                  const chars = (f.content || '').length
-                  const isNeedsPaste = f.needsPaste
-                  const isEmpty = !isNeedsPaste && chars === 0
-                  const isSuspicious = !isNeedsPaste && chars > 0 && chars < 400
-                  const isGood = !isNeedsPaste && chars >= 400
 
-                  let statusBadge = null
-                  if (isNeedsPaste) {
-                    statusBadge = <button onClick={() => { setBinaryFileName(f.name); setShowBinaryModal(true) }} style={{ fontSize: 10, fontWeight: 700, color: AMBER, background: `${AMBER}10`, border: `1px solid ${AMBER}25`, borderRadius: 6, padding: '2px 8px', cursor: 'pointer', flexShrink: 0 }}>Paste text ⚠</button>
-                  } else if (isEmpty) {
-                    statusBadge = <span style={{ fontSize: 10, fontWeight: 700, color: RED, background: `${RED}10`, border: `1px solid ${RED}25`, borderRadius: 6, padding: '2px 8px', flexShrink: 0 }}>✕ No text extracted</span>
-                  } else if (isSuspicious) {
-                    statusBadge = <span title="Very little text extracted — may be a scanned PDF" style={{ fontSize: 10, fontWeight: 700, color: AMBER, background: `${AMBER}10`, border: `1px solid ${AMBER}25`, borderRadius: 6, padding: '2px 8px', flexShrink: 0 }}>⚠ {chars} chars</span>
-                  } else if (isGood) {
-                    statusBadge = <span style={{ fontSize: 10, fontWeight: 600, color: GREEN, background: `${GREEN}08`, border: `1px solid ${GREEN}18`, borderRadius: 6, padding: '2px 8px', flexShrink: 0 }}>✓ {chars >= 1000 ? `${Math.round(chars / 1000)}k` : chars} chars</span>
-                  }
+            {/* RIGHT — Settings + Generate */}
+            <div style={{ display: 'flex', flexDirection: 'column', padding: '40px 28px', gap: 16, background: 'rgba(0,0,0,0.2)' }}>
 
-                  return (
-                    <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 8, background: isEmpty || isNeedsPaste ? `${RED}06` : isSuspicious ? `${AMBER}05` : f.fromCourse ? 'rgba(52,211,153,0.05)' : 'rgba(255,255,255,0.03)', border: `1px solid ${isEmpty || isNeedsPaste ? `${RED}20` : isSuspicious ? `${AMBER}20` : f.fromCourse ? 'rgba(52,211,153,0.12)' : 'rgba(255,255,255,0.06)'}` }}>
-                      <span style={{ fontSize: 14 }}>{fileIcon(f.type, f.name)}</span>
-                      <span style={{ flex: 1, fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.7)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
-                      {statusBadge}
-                      {f.fromCourse && selectedCourse && <span style={{ fontSize: 10, fontWeight: 700, color: GREEN, background: `${GREEN}10`, borderRadius: 6, padding: '2px 7px', flexShrink: 0 }}>{selectedCourse.code}</span>}
-                      {!f.fromCourse && <button onClick={() => removeFile(f.id)} style={{ width: 22, height: 22, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', color: 'rgba(255,255,255,0.25)', cursor: 'pointer', flexShrink: 0 }}>✕</button>}
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </motion.div>
+              {/* Course selector */}
+              {courses.length > 0 && (
+                <motion.div initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.1, ease }}
+                  style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, padding: '16px' }}>
+                  <div style={{ fontSize: 9, fontWeight: 900, color: 'rgba(255,255,255,0.22)', letterSpacing: '0.22em', fontFamily: 'monospace', marginBottom: 10 }}>COURSE</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    <button onClick={() => setSelectedCourseId('')} style={{ padding: '6px 12px', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer', background: !selectedCourseId ? 'rgba(255,255,255,0.1)' : 'transparent', color: !selectedCourseId ? '#fff' : 'rgba(255,255,255,0.35)', border: `1px solid ${!selectedCourseId ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.06)'}`, transition: 'all 0.15s' }}>General</button>
+                    {courses.map(c => (
+                      <button key={c.id} onClick={() => setSelectedCourseId(c.id)} style={{ padding: '6px 12px', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer', background: selectedCourseId === c.id ? `${c.color}18` : 'transparent', color: selectedCourseId === c.id ? c.color : 'rgba(255,255,255,0.35)', border: `1px solid ${selectedCourseId === c.id ? c.color + '40' : 'rgba(255,255,255,0.06)'}`, transition: 'all 0.15s' }}>{c.code}</button>
+                    ))}
+                  </div>
+                  {selectedCourse?.materials?.length > 0 && <p style={{ fontSize: 10, color: GREEN, marginTop: 8, margin: '8px 0 0' }}>✓ {selectedCourse.materials.length} file{selectedCourse.materials.length !== 1 ? 's' : ''} from {selectedCourse.code} loaded</p>}
+                </motion.div>
+              )}
 
-          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25, ease }}
-            style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
-            <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, padding: '18px' }}>
-              <div style={{ fontSize: 9, fontWeight: 900, color: 'rgba(255,255,255,0.25)', letterSpacing: '0.2em', fontFamily: 'monospace', marginBottom: 12 }}>LEVEL</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {[['highschool', 'High School'], ['undergraduate', 'Undergrad'], ['graduate', 'Graduate']].map(([v, l]) => (
-                  <button key={v} onClick={() => setCourseLevel(v)} style={{ padding: '9px 12px', borderRadius: 8, fontSize: 12, fontWeight: 700, textAlign: 'left', cursor: 'pointer', background: courseLevel === v ? `linear-gradient(135deg,${BLUE},${CYAN})` : 'rgba(255,255,255,0.04)', color: courseLevel === v ? '#fff' : 'rgba(255,255,255,0.45)', border: courseLevel === v ? 'none' : '1px solid rgba(255,255,255,0.07)', transition: 'all 0.15s' }}>{l}</button>
-                ))}
-              </div>
+              {/* Topic */}
+              <motion.div initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.15, ease }}
+                style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, padding: '16px' }}>
+                <div style={{ fontSize: 9, fontWeight: 900, color: 'rgba(255,255,255,0.22)', letterSpacing: '0.22em', fontFamily: 'monospace', marginBottom: 10 }}>TOPIC / EXAM NAME</div>
+                <input type="text" value={topic} onChange={e => setTopic(e.target.value)} onKeyDown={e => e.key === 'Enter' && canGenerate && handleGenerate()}
+                  placeholder="e.g., Midterm 2 — Cell Division, Final Exam, Chapter 7..."
+                  style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, color: 'white', padding: '10px 13px', fontSize: 13, outline: 'none', boxSizing: 'border-box', transition: 'border-color 0.2s' }}
+                  onFocus={e => e.target.style.borderColor = `${BLUE}60`} onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.08)'} />
+              </motion.div>
+
+              {/* Level + Exam Type side by side */}
+              <motion.div initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2, ease }}
+                style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, padding: '14px' }}>
+                  <div style={{ fontSize: 9, fontWeight: 900, color: 'rgba(255,255,255,0.22)', letterSpacing: '0.2em', fontFamily: 'monospace', marginBottom: 8 }}>LEVEL</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                    {[['highschool', 'High School'], ['undergraduate', 'Undergrad'], ['graduate', 'Graduate']].map(([v, l]) => (
+                      <button key={v} onClick={() => setCourseLevel(v)} style={{ padding: '7px 10px', borderRadius: 7, fontSize: 11, fontWeight: 700, textAlign: 'left', cursor: 'pointer', background: courseLevel === v ? `linear-gradient(135deg,${BLUE},${CYAN})` : 'rgba(255,255,255,0.03)', color: courseLevel === v ? '#fff' : 'rgba(255,255,255,0.4)', border: courseLevel === v ? 'none' : '1px solid rgba(255,255,255,0.06)', transition: 'all 0.15s' }}>{l}</button>
+                    ))}
+                  </div>
+                </div>
+                <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, padding: '14px' }}>
+                  <div style={{ fontSize: 9, fontWeight: 900, color: 'rgba(255,255,255,0.22)', letterSpacing: '0.2em', fontFamily: 'monospace', marginBottom: 8 }}>EXAM TYPE</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                    {[['multiple-choice', 'MCQ'], ['short-answer', 'Short Answer'], ['essay', 'Essay'], ['mixed', 'Mixed']].map(([v, l]) => (
+                      <button key={v} onClick={() => setExamType(v)} style={{ padding: '7px 10px', borderRadius: 7, fontSize: 11, fontWeight: 700, textAlign: 'left', cursor: 'pointer', background: examType === v ? `linear-gradient(135deg,${BLUE},${CYAN})` : 'rgba(255,255,255,0.03)', color: examType === v ? '#fff' : 'rgba(255,255,255,0.4)', border: examType === v ? 'none' : '1px solid rgba(255,255,255,0.06)', transition: 'all 0.15s' }}>{l}</button>
+                    ))}
+                  </div>
+                </div>
+              </motion.div>
+
+              {/* Focus areas */}
+              <motion.div initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.25, ease }}
+                style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, padding: '16px' }}>
+                <div style={{ fontSize: 9, fontWeight: 900, color: 'rgba(255,255,255,0.22)', letterSpacing: '0.22em', fontFamily: 'monospace', marginBottom: 10 }}>WHAT CONFUSES YOU <span style={{ color: 'rgba(255,255,255,0.14)', fontWeight: 400, fontSize: 9, letterSpacing: 0, textTransform: 'none' }}>optional</span></div>
+                <textarea value={focusAreas} onChange={e => setFocusAreas(e.target.value)} rows={3}
+                  placeholder="e.g., I don't understand entropy, or when to use integration by parts..."
+                  style={{ width: '100%', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 10, color: '#fff', fontSize: 12, padding: '10px 13px', resize: 'none', outline: 'none', boxSizing: 'border-box', lineHeight: 1.5, transition: 'border-color 0.2s' }}
+                  onFocus={e => e.target.style.borderColor = `${BLUE}50`} onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.07)'} />
+              </motion.div>
+
+              {/* Spacer */}
+              <div style={{ flex: 1 }} />
+
+              {/* Generate button */}
+              <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3, ease }}>
+                {/* File summary */}
+                {uploadedFiles.length > 0 && (
+                  <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+                    {uploadedFiles.some(f => f.extracting) && (
+                      <div style={{ fontSize: 10, color: CYAN, display: 'flex', alignItems: 'center', gap: 5 }}>
+                        <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }} style={{ width: 8, height: 8, border: `2px solid ${CYAN}`, borderTopColor: 'transparent', borderRadius: '50%' }} />
+                        Extracting content...
+                      </div>
+                    )}
+                    {!uploadedFiles.some(f => f.extracting) && (
+                      <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)' }}>
+                        {uploadedFiles.filter(f => (f.content || '').length >= 400).length} of {uploadedFiles.length} files ready
+                        {' · '}{Math.round(uploadedFiles.reduce((s, f) => s + (f.content || '').length, 0) / 1000)}k chars total
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <motion.button
+                  whileHover={canGenerate ? { scale: 1.02, boxShadow: `0 0 40px ${BLUE}50` } : {}}
+                  whileTap={canGenerate ? { scale: 0.98 } : {}}
+                  onClick={handleGenerate} disabled={!canGenerate}
+                  style={{
+                    width: '100%', padding: '18px 0', borderRadius: 14,
+                    fontSize: 14, fontWeight: 900, letterSpacing: '0.08em',
+                    background: canGenerate ? `linear-gradient(135deg,${BLUE},${CYAN})` : 'rgba(255,255,255,0.04)',
+                    color: canGenerate ? '#fff' : 'rgba(255,255,255,0.15)',
+                    border: 'none', cursor: canGenerate ? 'pointer' : 'not-allowed',
+                    boxShadow: canGenerate ? `0 0 28px ${BLUE}35` : 'none',
+                    transition: 'all 0.2s', position: 'relative', overflow: 'hidden',
+                  }}>
+                  {canGenerate && <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(90deg,transparent,rgba(255,255,255,0.06),transparent)', animation: 'clutch-scan 3s linear infinite' }} />}
+                  <span style={{ position: 'relative' }}>
+                    {uploadedFiles.some(f => f.extracting) ? 'Waiting for extraction...' : uploadedFiles.length > 0 ? `LAUNCH CLUTCH — ${uploadedFiles.length} FILE${uploadedFiles.length !== 1 ? 'S' : ''} ⚡` : 'LAUNCH CLUTCH ⚡'}
+                  </span>
+                </motion.button>
+
+                {/* Past sessions */}
+                {sessions.length > 0 && (
+                  <button onClick={() => setSessionsOpen(true)} style={{ width: '100%', marginTop: 10, padding: '11px 0', borderRadius: 12, fontSize: 12, fontWeight: 700, background: 'rgba(255,255,255,0.03)', color: 'rgba(255,255,255,0.35)', border: '1px solid rgba(255,255,255,0.07)', cursor: 'pointer', letterSpacing: '0.04em' }}>
+                    View {sessions.length} past session{sessions.length !== 1 ? 's' : ''} →
+                  </button>
+                )}
+              </motion.div>
             </div>
-            <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, padding: '18px' }}>
-              <div style={{ fontSize: 9, fontWeight: 900, color: 'rgba(255,255,255,0.25)', letterSpacing: '0.2em', fontFamily: 'monospace', marginBottom: 12 }}>EXAM TYPE</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {[['multiple-choice', 'Multiple Choice'], ['short-answer', 'Short Answer'], ['essay', 'Essay'], ['mixed', 'Mixed']].map(([v, l]) => (
-                  <button key={v} onClick={() => setExamType(v)} style={{ padding: '9px 12px', borderRadius: 8, fontSize: 12, fontWeight: 700, textAlign: 'left', cursor: 'pointer', background: examType === v ? `linear-gradient(135deg,${BLUE},${CYAN})` : 'rgba(255,255,255,0.04)', color: examType === v ? '#fff' : 'rgba(255,255,255,0.45)', border: examType === v ? 'none' : '1px solid rgba(255,255,255,0.07)', transition: 'all 0.15s' }}>{l}</button>
-                ))}
-              </div>
-            </div>
-          </motion.div>
-
-          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3, ease }}
-            style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, padding: '18px', marginBottom: 24 }}>
-            <div style={{ fontSize: 9, fontWeight: 900, color: 'rgba(255,255,255,0.25)', letterSpacing: '0.2em', fontFamily: 'monospace', marginBottom: 12 }}>WHAT CONFUSES YOU <span style={{ color: 'rgba(255,255,255,0.15)', fontWeight: 400, textTransform: 'none', fontSize: 10, letterSpacing: 0 }}>optional</span></div>
-            <textarea value={focusAreas} onChange={e => setFocusAreas(e.target.value)} rows={2} placeholder="e.g., I don't understand how entropy works, or when to use integration by parts..."
-              style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, color: '#fff', fontSize: 13, padding: '10px 14px', resize: 'none', outline: 'none', boxSizing: 'border-box' }} />
-          </motion.div>
-
-          <motion.button whileHover={{ scale: 1.015 }} whileTap={{ scale: 0.98 }} onClick={handleGenerate} disabled={!canGenerate}
-            style={{ width: '100%', padding: '16px 0', borderRadius: 14, fontSize: 13, fontWeight: 900, letterSpacing: '0.1em', background: canGenerate ? `linear-gradient(135deg,${BLUE},${CYAN})` : 'rgba(255,255,255,0.05)', color: canGenerate ? '#fff' : 'rgba(255,255,255,0.2)', border: 'none', cursor: canGenerate ? 'pointer' : 'not-allowed', boxShadow: canGenerate ? `0 0 30px ${BLUE}35` : 'none', transition: 'all 0.2s' }}>
-            {uploadedFiles.length > 0 ? `BEGIN SESSION — ${uploadedFiles.length} FILE${uploadedFiles.length !== 1 ? 'S' : ''} →` : 'BEGIN SESSION →'}
-          </motion.button>
+          </div>
         </div>
       )}
 
