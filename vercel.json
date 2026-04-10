@@ -4,5 +4,8 @@
   "framework": "vite",
   "rewrites": [
     { "source": "/((?!api/).*)", "destination": "/index.html" }
-  ]
+  ],
+  "functions": {
+    "api/groq.js": { "maxDuration": 60 }
+  }
 }

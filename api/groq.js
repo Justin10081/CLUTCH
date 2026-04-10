@@ -101,7 +101,7 @@ export default async function handler(req, res) {
         messages: safeMessages,
         ...(response_format ? { response_format } : {}),
         temperature: typeof temperature === 'number' ? Math.min(Math.max(temperature, 0), 1) : 0.3,
-        max_tokens: typeof max_tokens === 'number' ? Math.min(max_tokens, 16000) : 4096,
+        max_tokens: typeof max_tokens === 'number' ? Math.min(max_tokens, 32768) : 4096,
       }),
     })
 

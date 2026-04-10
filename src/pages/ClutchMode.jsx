@@ -184,6 +184,7 @@ export default function ClutchMode() {
   const [isDragging, setIsDragging] = useState(false)
   const [result, setResult] = useState(null)
   const [loadingStep, setLoadingStep] = useState(0)
+  const [generateError, setGenerateError] = useState(null)
   const [binaryFileName, setBinaryFileName] = useState(null)
   const [binaryPasteText, setBinaryPasteText] = useState('')
   const [showBinaryModal, setShowBinaryModal] = useState(false)
@@ -360,7 +361,13 @@ export default function ClutchMode() {
   }
 
   const handleGenerate = () => {
+    setGenerateError(null)
     if (!topic.trim() && uploadedFiles.length === 0) return
+    // Block if any file is still extracting
+    if (uploadedFiles.some(f => f.extracting)) {
+      setGenerateError('Files are still being read — wait a moment and try again.')
+      return
+    }
     if (uploadedFiles.length > 0) {
       const validation = validateContent()
       if (validation.hasWarnings) {
@@ -373,13 +380,21 @@ export default function ClutchMode() {
 
   const generate = async () => {
     setContentWarning(null)
+    setGenerateError(null)
     if (!topic.trim() && uploadedFiles.length === 0) return
     setStep('loading'); setLoadingStep(0)
     const files = uploadedFiles.map(f => ({ name: f.name, type: f.type, content: (f.content || '').slice(0, 40000) }))
     const courseCtx = selectedCourse ? { name: selectedCourse.name, code: selectedCourse.code, professor: selectedCourse.professor } : preload.courseName ? { name: preload.courseName, code: preload.courseCode } : null
-    const effectiveTopic = topic || selectedCourse?.name || preload.courseName || 'General Study'
+    const effectiveTopic = topic || selectedCourse?.name || preload.courseName || ''
     const fileContext = files.map(f => `--- FILE: ${f.name} ---\n${f.content}`).join('\n\n')
+
+    // Debug: log exactly what we're sending
+    console.log('[CLUTCH] Generating for topic:', effectiveTopic)
+    console.log('[CLUTCH] Files:', files.map(f => `${f.name} (${f.content.length} chars)`))
+    console.log('[CLUTCH] Total file chars:', files.reduce((s, f) => s + f.content.length, 0))
+
     let data = null
+    let apiError = null
     try {
       setLoadingStep(1)
       const prompt = `You are CLUTCH — the world's most effective exam preparation professor. You operate with elite-level pedagogical expertise and a singular mission: to help this student achieve the highest possible score on their upcoming exam.
@@ -399,11 +414,11 @@ MATERIAL PROCESSING — before generating, rank everything by exam probability:
 
 Treat the uploaded materials as your lecture notes and course content. Extract every concept, definition, formula, date, name, process, and relationship from them. Teach it all. Leave nothing important out.
 
-TOPIC: "${effectiveTopic}"
+TOPIC: "${effectiveTopic || files.map(f => f.name).join(', ') || 'Uploaded Materials'}"
 ${courseCtx ? `COURSE: ${courseCtx.name} (${courseCtx.code || ''})${courseCtx.professor ? ` — Prof. ${courseCtx.professor}` : ''}` : ''}
 EXAM TYPE: ${examType || 'mixed'} | LEVEL: ${courseLevel || 'undergraduate'}
 ${focusAreas ? `STUDENT SPECIFICALLY NEEDS HELP WITH: ${focusAreas}` : ''}
-${fileContext ? `\nCOURSE MATERIALS — READ EVERY WORD. These are the actual slides, notes, and documents for this course. Your ENTIRE output must be grounded in this content. Do not invent, generalize, or substitute — extract and teach exactly what is in these materials:\n${fileContext.slice(0, 90000)}` : ''}
+${fileContext.trim() ? `\nCOURSE MATERIALS — READ EVERY WORD. These are the actual lecture notes, slides, and study documents this student uploaded. Your ENTIRE output must be drawn directly from this content. Every concept, definition, example, and question must come from these materials. Do NOT use generic examples or invent content:\n${fileContext.slice(0, 90000)}` : ''}
 
 STEP 1 — Detect content type:
 - "technical": math, CS, programming, physics, chemistry, engineering, statistics, econometrics
@@ -486,16 +501,16 @@ TECHNICAL: Teach the math/logic/code deeply. 4-6 workedExamples showing every st
 CONCEPTUAL: Teach the ideas, movements, arguments, and their significance. 6-8 paragraph lecture (plainEnglish) with vivid real-world analogies. 3-5 diagrams (timeline/comparison/hierarchy). 8-10 deep coreConcepts. 10-12 mcqQuestions testing interpretation, causation, and evaluation. Mnemonics for key sequences and names.
 MIXED: Teach both the theory and the application equally. Balance all sections. 8-10 mcqQuestions mixing conceptual and applied.
 
-NON-NEGOTIABLE STANDARDS — every output must meet these or it fails:
-1. TEACH, don't summarize. Every section must explain mechanisms, causes, and implications — not just list facts.
-2. If materials were uploaded: every concept, definition, and example MUST come from those materials. Do not invent or substitute content.
-3. coreConcepts: minimum 7, maximum 12. Each one taught fully — mechanism, analogy, edge case, mistake.
-4. cheatSheet: minimum 20 items. Every item a specific, standalone fact from the actual subject. Zero generic advice.
-5. mcqQuestions: minimum 8, maximum 12. Each wrong option is a plausible misconception — never obviously wrong.
-6. likelyQuestions: minimum 7, maximum 10. Model answers must be complete A-grade responses, not outlines.
-7. flashcards: minimum 12 cards. Every card tied to a specific concept from the material.
-8. plainEnglish: minimum 6 paragraphs of actual teaching — no bullet points, no hedging, no filler.
-9. Every section references THIS specific topic and material — not a generic template.`
+NON-NEGOTIABLE STANDARDS:
+1. TEACH, don't summarize. Explain mechanisms, causes, and implications — not just lists.
+2. If materials were uploaded: EVERY concept and example MUST come from those materials. Do not invent or substitute.
+3. coreConcepts: 5-8 items. Each taught fully — mechanism, analogy, mistake.
+4. cheatSheet: 12-18 items. Each a specific standalone fact from the material.
+5. mcqQuestions: 6-8 items. Each wrong option is a plausible misconception.
+6. likelyQuestions: 4-6 items. Model answers must be complete, not outlines.
+7. flashcards: 8-12 cards. Each tied to a specific concept from the material.
+8. plainEnglish: 4-6 paragraphs of actual teaching — no bullet points.
+9. Every section references THIS specific topic and material — not generic templates.`
 
       const token = await getAuthToken()
       const res = await fetch('/api/groq', {
@@ -504,11 +519,38 @@ NON-NEGOTIABLE STANDARDS — every output must meet these or it fails:
         body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: prompt }], response_format: { type: 'json_object' }, temperature: 0.2, max_tokens: 16000 }),
       })
       setLoadingStep(2)
-      if (res.status === 429) { const { error } = await res.json().catch(() => ({})); setStep('input'); alert(error || 'Daily AI limit reached. Resets at midnight.'); return }
-      if (res.ok) { const json = await res.json(); data = JSON.parse(json.choices[0].message.content); setLoadingStep(3) }
-    } catch (e) { console.warn('Groq error, using fallback:', e) }
+      if (res.status === 429) {
+        const { error } = await res.json().catch(() => ({}))
+        setStep('input')
+        setGenerateError(error || 'Daily AI limit reached. Resets at midnight.')
+        return
+      }
+      if (res.ok) {
+        const json = await res.json()
+        const raw = json.choices?.[0]?.message?.content || ''
+        console.log('[CLUTCH] Raw response length:', raw.length, 'chars')
+        try {
+          data = JSON.parse(raw)
+        } catch (parseErr) {
+          console.error('[CLUTCH] JSON parse failed. First 500 chars:', raw.slice(0, 500))
+          apiError = `The AI response was too long and got cut off. Try uploading smaller files or using the Focus Areas field to narrow the topic.`
+        }
+        setLoadingStep(3)
+      } else {
+        const errBody = await res.json().catch(() => ({}))
+        apiError = errBody.error || `AI service error (${res.status}) — please try again`
+        console.error('[CLUTCH] API error:', res.status, errBody)
+      }
+    } catch (e) {
+      console.error('[CLUTCH] Network/fetch error:', e)
+      apiError = e.message || 'Network error — check your connection and try again'
+    }
 
-    if (!data) { await new Promise(r => setTimeout(r, 1800)); data = generateFallback(effectiveTopic, uploadedFiles) }
+    if (!data) {
+      setStep('input')
+      setGenerateError(apiError || 'Something went wrong — please try again')
+      return
+    }
 
     setResult(data); setStep('result'); setSessionSaved(false)
 
@@ -905,6 +947,16 @@ NON-NEGOTIABLE STANDARDS — every output must meet these or it fails:
                     {uploadedFiles.some(f => f.extracting) ? 'Waiting for extraction...' : uploadedFiles.length > 0 ? `LAUNCH CLUTCH — ${uploadedFiles.length} FILE${uploadedFiles.length !== 1 ? 'S' : ''} ⚡` : 'LAUNCH CLUTCH ⚡'}
                   </span>
                 </motion.button>
+
+                {/* Error display */}
+                {generateError && (
+                  <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+                    style={{ marginTop: 10, padding: '12px 14px', borderRadius: 10, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                    <span style={{ fontSize: 14, flexShrink: 0, marginTop: 1 }}>⚠️</span>
+                    <div style={{ fontSize: 12, color: '#fca5a5', lineHeight: 1.5 }}>{generateError}</div>
+                    <button onClick={() => setGenerateError(null)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.3)', cursor: 'pointer', fontSize: 14, flexShrink: 0, padding: '0 2px' }}>✕</button>
+                  </motion.div>
+                )}
 
                 {/* Past sessions */}
                 {sessions.length > 0 && (
