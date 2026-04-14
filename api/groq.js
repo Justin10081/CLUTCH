@@ -107,8 +107,13 @@ export default async function handler(req, res) {
 
     if (!groqRes.ok) {
       const errText = await groqRes.text()
-      console.error('Groq error:', groqRes.status, errText.slice(0, 200))
-      return res.status(502).json({ error: 'AI service error. Please try again.' })
+      console.error('Groq error:', groqRes.status, errText.slice(0, 500))
+      let friendlyError = `Groq API error ${groqRes.status}`
+      try {
+        const errJson = JSON.parse(errText)
+        friendlyError = errJson?.error?.message || errJson?.error || friendlyError
+      } catch {}
+      return res.status(502).json({ error: friendlyError })
     }
 
     const data = await groqRes.json()
